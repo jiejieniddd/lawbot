@@ -1,0 +1,1 @@
+"""LawBot API application package."""

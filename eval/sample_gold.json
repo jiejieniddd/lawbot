@@ -1,0 +1,8 @@
+[
+  {
+    "id": "gold-001",
+    "query": "公司拖欠工资两个月，可以解除劳动合同吗？",
+    "expected_citations": ["fake-labor-38"],
+    "notes": "骨架金标占位，非评测基线"
+  }
+]

@@ -1,0 +1,46 @@
+# VCS / IDE
+.git
+.gitignore
+.gitattributes
+.idea
+.vscode
+**/.vscode
+**/.idea
+
+# Env & secrets
+.env
+.env.*
+!**/.env.example
+apps/web/.env
+apps/admin/.env
+
+# Python
+.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/*.egg-info
+.coverage
+htmlcov
+dist
+build
+
+# Node
+**/node_modules
+apps/web/dist
+apps/admin/dist
+apps/web/.vite
+apps/admin/.vite
+
+# Docs / agent / CI noise (not needed in images)
+docs
+.agents
+.github
+
+# Local data / logs
+*.log
+pgdata
+qdrantdata
+osdata

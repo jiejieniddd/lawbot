@@ -1,0 +1,21 @@
+[project]
+name = "lawbot-worker"
+version = "0.1.0"
+description = "LawBot knowledge import worker"
+requires-python = ">=3.12"
+dependencies = [
+  "lawbot",
+]
+
+[tool.uv.sources]
+lawbot = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["worker"]
+
+[project.scripts]
+lawbot-worker = "worker.main:main"
