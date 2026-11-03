@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from lawbot.knowledge.embedder import embed_texts
 from lawbot.knowledge.hf_import import (
@@ -11,11 +11,15 @@ from lawbot.knowledge.hf_import import (
     ArticleRecord,
     iter_filtered_articles,
 )
+from lawbot.rag.factory import DEFAULT_MEMORY_DIR, get_memory_stores
+from lawbot.rag.memory_persist import save_memory_index
 from lawbot.rag.memory_store import InMemoryBM25Store, InMemoryVectorStore
 from lawbot.rag.opensearch_store import OpenSearchArticleStore
 from lawbot.rag.qdrant_store import QdrantArticleStore
 
 logger = logging.getLogger(__name__)
+
+IndexBackend = Literal["memory", "qdrant"]
 
 
 def run_import(
@@ -38,23 +42,54 @@ def run_import(
     rows: list[dict[str, Any]] | None = None,
     memory_vector: InMemoryVectorStore | None = None,
     memory_bm25: InMemoryBM25Store | None = None,
-    use_memory: bool = False,
+    use_memory: bool | None = None,
+    index_backend: IndexBackend | str | None = None,
+    memory_dir: str = DEFAULT_MEMORY_DIR,
 ) -> dict[str, Any]:
-    """Import filtered HF articles into Qdrant + OpenSearch (or in-memory stores)."""
+    """Import filtered HF articles into memory disk index or Qdrant (+ optional OpenSearch)."""
+    backend: str
+    if index_backend is not None:
+        backend = str(index_backend).lower()
+    elif use_memory is True:
+        backend = "memory"
+    elif use_memory is False:
+        backend = "qdrant"
+    else:
+        backend = "memory"
+
+    if backend not in ("memory", "qdrant"):
+        raise ValueError(f"unsupported index_backend={backend!r}")
+
     read = 0
     indexed = 0
     batch: list[ArticleRecord] = []
+    opensearch_status = "skipped"
 
-    qdrant = None
-    os_store = None
-    if not use_memory:
+    qdrant: QdrantArticleStore | None = None
+    os_store: OpenSearchArticleStore | None = None
+    mem_vec = memory_vector
+    mem_bm25 = memory_bm25
+
+    if backend == "memory":
+        if mem_vec is None or mem_bm25 is None:
+            mem_vec, mem_bm25 = get_memory_stores()
+            if recreate:
+                mem_vec._items.clear()
+                mem_bm25._docs.clear()
+    else:
         qdrant = QdrantArticleStore(url=qdrant_url, collection=collection, dim=embedding_dim)
-        os_store = OpenSearchArticleStore(url=opensearch_url, index=index)
         qdrant.ensure_collection(recreate=recreate)
-        os_store.ensure_index(recreate=recreate)
+        os_store = OpenSearchArticleStore(url=opensearch_url, index=index)
+        try:
+            os_store.ensure_index(recreate=recreate)
+            opensearch_status = "ok"
+        except Exception:
+            logger.exception("OpenSearch ensure_index failed; continuing with Qdrant only")
+            opensearch_status = "degraded"
+            os_store = None
 
     def flush(recs: list[ArticleRecord]) -> None:
-        nonlocal indexed
+        nonlocal indexed, opensearch_status, os_store
         if not recs:
             return
         vectors = embed_texts(
@@ -65,14 +100,20 @@ def run_import(
             dim=embedding_dim,
             mode=embedding_mode,
         )
-        if use_memory:
-            assert memory_vector is not None and memory_bm25 is not None
-            memory_vector.upsert(recs, vectors)
-            memory_bm25.upsert(recs)
+        if backend == "memory":
+            assert mem_vec is not None and mem_bm25 is not None
+            mem_vec.upsert(recs, vectors)
+            mem_bm25.upsert(recs)
         else:
-            assert qdrant is not None and os_store is not None
+            assert qdrant is not None
             qdrant.upsert(recs, vectors)
-            os_store.upsert(recs)
+            if os_store is not None:
+                try:
+                    os_store.upsert(recs)
+                except Exception:
+                    logger.exception("OpenSearch upsert failed; marking degraded")
+                    opensearch_status = "degraded"
+                    os_store = None
         indexed += len(recs)
 
     for rec in iter_filtered_articles(
@@ -89,6 +130,19 @@ def run_import(
             batch = []
 
     flush(batch)
-    stats = {"read": read, "filtered": read, "indexed": indexed, "skipped": 0}
+
+    if backend == "memory":
+        assert mem_vec is not None and mem_bm25 is not None
+        save_memory_index(mem_vec, mem_bm25, memory_dir)
+
+    stats: dict[str, Any] = {
+        "read": read,
+        "filtered": read,
+        "indexed": indexed,
+        "skipped": 0,
+        "backend": backend,
+        "opensearch": opensearch_status,
+        "memory_dir": memory_dir if backend == "memory" else None,
+    }
     logger.info("import finished stats=%s", stats)
     return stats

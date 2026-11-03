@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from lawbot.db.models import User
 from lawbot.db.session import get_sessionmaker
-from lawbot.domain.schemas import UserRole
+from lawbot.domain.schemas import UserRole, is_staff_role, is_super_admin_role
+from lawbot.rbac.service import user_has_permission, user_is_staff
 from lawbot.security import decode_access_token
 
 bearer = HTTPBearer(auto_error=False)
@@ -53,12 +54,28 @@ def get_current_user(
 
 
 def require_admin(user: User = Depends(get_current_user)) -> User:
-    if user.role not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+    if not user_is_staff(user) and not is_staff_role(user.role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    if user.role == UserRole.USER:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
     return user
 
 
 def require_super_admin(user: User = Depends(get_current_user)) -> User:
-    if user.role != UserRole.SUPER_ADMIN:
+    if not is_super_admin_role(user.role):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super admin only")
     return user
+
+
+def require_permission(code: str) -> Callable[..., User]:
+    def _dep(
+        user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        if user.role == UserRole.USER:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+        if not user_has_permission(db, user, code):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
+        return user
+
+    return _dep

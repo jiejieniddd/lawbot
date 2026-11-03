@@ -10,4 +10,4 @@ uv run --package lawbot-worker lawbot-worker
 cd apps/worker && uv run python -m worker.main
 ```
 
-Env: `DATABASE_URL`, `IMPORT_MAX_ROWS`, `QDRANT_URL`, `OPENSEARCH_URL`, `EMBEDDING_*`, `HF_DATASET_ID`.
+Env: `DATABASE_URL`, `IMPORT_MAX_ROWS`, `INDEX_BACKEND` (`memory`|`qdrant`), `RAG_MEMORY_DIR`, `QDRANT_URL`, `OPENSEARCH_URL`, `EMBEDDING_*`, `HF_DATASET_ID`.

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.deps import get_db, require_admin
+from app.deps import get_db, require_permission
 from lawbot.db.models import KnowledgeImportJob, User
 from lawbot.domain.schemas import ImportJobStatus, KnowledgeImportJobCreate, KnowledgeImportJobOut
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/knowledge-import-jobs", tags=["admin-knowledge-jobs"
 @router.get("", response_model=list[KnowledgeImportJobOut])
 def list_jobs(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("knowledge:read")),
 ) -> list[KnowledgeImportJob]:
     return list(
         db.scalars(select(KnowledgeImportJob).order_by(KnowledgeImportJob.created_at.desc())).all()
@@ -28,7 +28,7 @@ def list_jobs(
 def get_job(
     job_id: UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("knowledge:read")),
 ) -> KnowledgeImportJob:
     job = db.get(KnowledgeImportJob, job_id)
     if job is None:
@@ -40,7 +40,7 @@ def get_job(
 def create_job(
     body: KnowledgeImportJobCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("knowledge:import")),
     settings: Settings = Depends(get_settings),
 ) -> KnowledgeImportJob:
     config = dict(body.config or {})

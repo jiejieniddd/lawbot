@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -75,6 +76,59 @@ def row_to_record(row: Mapping[str, Any]) -> ArticleRecord:
     )
 
 
+def _load_dataset_rows(dataset_id: str, subset: str) -> Iterator[Mapping[str, Any]]:
+    """Load from local disk/parquet path or Hugging Face Hub id."""
+    from datasets import load_dataset, load_from_disk
+
+    path = Path(dataset_id).expanduser()
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+
+    if resolved.exists():
+        if resolved.is_file() and resolved.suffix.lower() == ".parquet":
+            ds = load_dataset("parquet", data_files=str(resolved), split="train")
+            for i in range(len(ds)):
+                yield ds[i]
+            return
+        if resolved.is_dir():
+            parquet_files = sorted(resolved.glob("**/*.parquet"))
+            # saved DatasetDict / Dataset directory
+            if (resolved / "dataset_info.json").exists() or (resolved / "state.json").exists():
+                ds_obj = load_from_disk(str(resolved))
+                if hasattr(ds_obj, "keys") and subset in ds_obj:
+                    ds = ds_obj[subset]
+                elif hasattr(ds_obj, "keys") and "train" in ds_obj:
+                    ds = ds_obj["train"]
+                else:
+                    ds = ds_obj
+                for i in range(len(ds)):
+                    yield ds[i]
+                return
+            subset_dir = resolved / subset
+            if subset_dir.is_dir() and (
+                (subset_dir / "dataset_info.json").exists() or (subset_dir / "state.json").exists()
+            ):
+                ds = load_from_disk(str(subset_dir))
+                for i in range(len(ds)):
+                    yield ds[i]
+                return
+            if parquet_files:
+                ds = load_dataset(
+                    "parquet",
+                    data_files=[str(p) for p in parquet_files],
+                    split="train",
+                )
+                for i in range(len(ds)):
+                    yield ds[i]
+                return
+
+    ds = load_dataset(dataset_id, subset, split="train")
+    for i in range(len(ds)):
+        yield ds[i]
+
+
 def iter_filtered_articles(
     *,
     dataset_id: str = DEFAULT_DATASET,
@@ -90,10 +144,7 @@ def iter_filtered_articles(
     if rows is not None:
         source_iter: Iterator[Mapping[str, Any]] = iter(rows)
     else:
-        from datasets import load_dataset
-
-        ds = load_dataset(dataset_id, subset, split="train")
-        source_iter = (ds[i] for i in range(len(ds)))
+        source_iter = _load_dataset_rows(dataset_id, subset)
 
     for row in source_iter:
         if not filter_article_row(row, categories=categories):

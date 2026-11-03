@@ -32,12 +32,14 @@ services:
     volumes:
       - qdrantdata:/qdrant/storage
 
+  # Heavy (~512MB+). Opt-in on low-RAM hosts: docker compose --profile full up
   opensearch:
     image: opensearchproject/opensearch:2.17.1
+    profiles: ["full"]
     environment:
       discovery.type: single-node
       plugins.security.disabled: "true"
-      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:--Xms256m -Xmx256m}
       DISABLE_INSTALL_DEMO_CONFIG: "true"
     ports:
       - "9200:9200"
@@ -72,16 +74,24 @@ services:
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-lawbot_articles_v1}
       OPENSEARCH_INDEX: ${OPENSEARCH_INDEX:-lawbot_articles_v1}
-      IMPORT_MAX_ROWS: ${IMPORT_MAX_ROWS:-500}
-      RETRIEVER_MODE: ${RETRIEVER_MODE:-hybrid}
+      IMPORT_MAX_ROWS: ${IMPORT_MAX_ROWS:-200}
+      INDEX_BACKEND: ${INDEX_BACKEND:-memory}
+      RAG_MEMORY_DIR: ${RAG_MEMORY_DIR:-data/rag_memory}
+      # memory = low-spec real retrieval; hybrid needs Qdrant (+ optional OpenSearch via --profile full)
+      RETRIEVER_MODE: ${RETRIEVER_MODE:-memory}
       RETRIEVER_TOP_K: ${RETRIEVER_TOP_K:-5}
       RRF_K: ${RRF_K:-60}
-      EMBEDDING_MODE: ${EMBEDDING_MODE:-auto}
+      EMBEDDING_MODE: ${EMBEDDING_MODE:-fake}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_API_BASE: ${EMBEDDING_API_BASE:-}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-384}
       HF_DATASET_ID: ${HF_DATASET_ID:-senry5433/china-effective-laws-regulations}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/workspace/data/uploads/avatars}
+      AVATAR_MAX_BYTES: ${AVATAR_MAX_BYTES:-2097152}
+    volumes:
+      - uploads_data:/workspace/data/uploads
+      - ./data/rag_memory:/workspace/data/rag_memory
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -91,8 +101,6 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
-      opensearch:
-        condition: service_healthy
     healthcheck:
       test:
         [
@@ -117,23 +125,29 @@ services:
       DATABASE_URL: postgresql+psycopg://lawbot:lawbot@postgres:5432/lawbot
       QDRANT_URL: http://qdrant:6333
       OPENSEARCH_URL: http://opensearch:9200
-      IMPORT_MAX_ROWS: ${IMPORT_MAX_ROWS:-500}
+      IMPORT_MAX_ROWS: ${IMPORT_MAX_ROWS:-200}
+      INDEX_BACKEND: ${INDEX_BACKEND:-memory}
+      RAG_MEMORY_DIR: ${RAG_MEMORY_DIR:-data/rag_memory}
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-lawbot_articles_v1}
       OPENSEARCH_INDEX: ${OPENSEARCH_INDEX:-lawbot_articles_v1}
-      EMBEDDING_MODE: ${EMBEDDING_MODE:-auto}
+      EMBEDDING_MODE: ${EMBEDDING_MODE:-fake}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_API_BASE: ${EMBEDDING_API_BASE:-}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-384}
       HF_DATASET_ID: ${HF_DATASET_ID:-senry5433/china-effective-laws-regulations}
       WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
+    volumes:
+      - ./data/rag_memory:/workspace/data/rag_memory
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
         condition: service_started
+      # OpenSearch only when profile full is enabled
       opensearch:
         condition: service_healthy
+        required: false
 
   web:
     build:
@@ -163,3 +177,4 @@ volumes:
   pgdata:
   qdrantdata:
   osdata:
+  uploads_data:

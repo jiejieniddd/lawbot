@@ -9,7 +9,7 @@ export default function SettingsPage() {
   })
 
   return (
-    <Card title="Settings（脱敏）" loading={isLoading}>
+    <Card title="系统设置（脱敏）" loading={isLoading}>
       <Descriptions column={1} bordered size="small">
         {data &&
           Object.entries(data).map(([k, v]) => (

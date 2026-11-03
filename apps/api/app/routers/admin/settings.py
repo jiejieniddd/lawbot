@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.config import Settings, get_settings
-from app.deps import require_admin
+from app.deps import require_permission
 from lawbot.db.models import User
 
 router = APIRouter(prefix="/settings", tags=["admin-settings"])
@@ -12,7 +12,7 @@ router = APIRouter(prefix="/settings", tags=["admin-settings"])
 @router.get("")
 def get_settings_redacted(
     settings: Settings = Depends(get_settings),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("settings:read")),
 ) -> dict:
     def mask(value: str) -> str:
         if not value:

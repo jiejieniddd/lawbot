@@ -3,6 +3,7 @@ import { hasSession } from '../api/client'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import ChatView from '../views/ChatView.vue'
+import ProfileView from '../views/ProfileView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -12,6 +13,7 @@ const router = createRouter({
     { path: '/register', component: RegisterView, meta: { guestOnly: true } },
     { path: '/chat', component: ChatView, meta: { requiresAuth: true } },
     { path: '/chat/:id', component: ChatView, meta: { requiresAuth: true } },
+    { path: '/profile', component: ProfileView, meta: { requiresAuth: true } },
   ],
 })
 

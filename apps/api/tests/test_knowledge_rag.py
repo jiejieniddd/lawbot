@@ -4,8 +4,15 @@ from lawbot.domain.schemas import Citation
 from lawbot.knowledge.hf_import import build_chunk, filter_article_row, iter_filtered_articles, row_to_record
 from lawbot.knowledge.indexer import run_import
 from lawbot.rag.base import RetrievedChunk
-from lawbot.rag.factory import RetrieverSettings, build_retriever, get_memory_stores
-from lawbot.rag.hybrid import reciprocal_rank_fusion
+from lawbot.rag.factory import (
+    RetrieverSettings,
+    build_retriever,
+    get_memory_stores,
+    reset_memory_stores_for_tests,
+)
+from lawbot.rag.hybrid import HybridRetriever, reciprocal_rank_fusion
+from lawbot.rag.memory_persist import load_memory_index, save_memory_index
+from lawbot.rag.fake import FakeRetriever
 
 
 SAMPLE_ROWS = [
@@ -102,27 +109,108 @@ def test_rrf_fusion_prefers_shared_hits():
     assert {c.citation.source_id for c in fused} == {"s1", "s2", "s3"}
 
 
-def test_memory_import_and_hybrid_retrieve():
-    vec, bm25 = get_memory_stores()
-    vec._items.clear()
-    bm25._docs.clear()
+def test_hybrid_empty_backends_return_empty_not_fake():
+    r = HybridRetriever()
+    hits = r.retrieve("劳动合同", top_k=3)
+    assert hits == []
+    assert all(not h.citation.source_id.startswith("fake-") for h in hits)
+
+
+def test_fake_mode_still_returns_fake_ids():
+    r = build_retriever(RetrieverSettings(mode="fake"))
+    assert isinstance(r, FakeRetriever)
+    hits = r.retrieve("劳动合同", top_k=3)
+    assert hits
+    assert any(h.citation.source_id.startswith("fake-") for h in hits)
+
+
+def test_memory_import_and_hybrid_retrieve(tmp_path):
+    reset_memory_stores_for_tests()
+    memory_dir = tmp_path / "rag_memory"
     stats = run_import(
         max_rows=10,
         rows=SAMPLE_ROWS,
-        use_memory=True,
-        memory_vector=vec,
-        memory_bm25=bm25,
+        index_backend="memory",
+        memory_dir=str(memory_dir),
         embedding_mode="fake",
         batch_size=2,
+        recreate=True,
     )
     assert stats["indexed"] == 2
-    retriever = build_retriever(RetrieverSettings(mode="memory", embedding_mode="fake"))
+    assert stats["backend"] == "memory"
+    reset_memory_stores_for_tests()
+    retriever = build_retriever(
+        RetrieverSettings(mode="memory", embedding_mode="fake", memory_dir=str(memory_dir))
+    )
     hits = retriever.retrieve("合同 合法权益", top_k=2)
     assert hits
     assert hits[0].citation.source_id in {"a1", "a4"}
+    assert not hits[0].citation.source_id.startswith("fake-")
     assert hits[0].citation.law_name
     assert hits[0].citation.article_no
     assert hits[0].citation.text
+
+
+def test_memory_persist_roundtrip(tmp_path):
+    reset_memory_stores_for_tests()
+    memory_dir = tmp_path / "persist"
+    run_import(
+        rows=SAMPLE_ROWS,
+        index_backend="memory",
+        memory_dir=str(memory_dir),
+        embedding_mode="fake",
+        recreate=True,
+    )
+    vec, bm25 = get_memory_stores()
+    assert len(vec._items) == 2
+    save_memory_index(vec, bm25, memory_dir)
+    reset_memory_stores_for_tests()
+    loaded_vec, loaded_bm25, count = load_memory_index(memory_dir)
+    assert count == 2
+    hits = loaded_vec.search(loaded_vec._items[0][0], top_k=1)
+    assert hits
+    assert not hits[0].citation.source_id.startswith("fake-")
+    assert loaded_bm25.search("合同", top_k=1)
+
+
+def test_indexer_opensearch_degraded(monkeypatch, tmp_path):
+    from lawbot.knowledge import indexer as indexer_mod
+
+    class BoomOS:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def ensure_index(self, recreate: bool = False) -> None:
+            raise RuntimeError("opensearch down")
+
+        def upsert(self, records):
+            raise RuntimeError("should not be called")
+
+    class FakeQdrant:
+        def __init__(self, *args, **kwargs):
+            self.upserted = 0
+
+        def ensure_collection(self, recreate: bool = False) -> None:
+            return None
+
+        def upsert(self, records, vectors):
+            self.upserted += len(records)
+            return len(records)
+
+    monkeypatch.setattr(indexer_mod, "OpenSearchArticleStore", BoomOS)
+    fake_q = FakeQdrant()
+    monkeypatch.setattr(indexer_mod, "QdrantArticleStore", lambda **kwargs: fake_q)
+
+    stats = run_import(
+        rows=SAMPLE_ROWS,
+        index_backend="qdrant",
+        embedding_mode="fake",
+        memory_dir=str(tmp_path),
+    )
+    assert stats["indexed"] == 2
+    assert stats["backend"] == "qdrant"
+    assert stats["opensearch"] == "degraded"
+    assert fake_q.upserted == 2
 
 
 def _admin_headers(client, admin_user):
@@ -140,7 +228,7 @@ def test_knowledge_import_job_create_and_get(client, admin_user):
     assert created.status_code == 201, created.text
     body = created.json()
     assert body["status"] == "pending"
-    assert body["config"]["max_rows"] == 500
+    assert body["config"]["max_rows"] == 200
     assert body["config"]["subset"] == "articles"
     assert "法律" in body["config"]["categories"]
     job_id = body["id"]

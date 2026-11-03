@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.deps import get_db, require_admin
+from app.deps import get_db, require_permission
 from lawbot.db.models import KnowledgeDocument, User
 from lawbot.domain.schemas import KnowledgeCreate, KnowledgeOut, KnowledgePatch
 
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/knowledge/documents", tags=["admin-knowledge"])
 @router.get("", response_model=list[KnowledgeOut])
 def list_docs(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("knowledge:read")),
 ) -> list[KnowledgeDocument]:
     return list(db.scalars(select(KnowledgeDocument).order_by(KnowledgeDocument.updated_at.desc())).all())
 
@@ -25,7 +25,7 @@ def list_docs(
 def create_doc(
     body: KnowledgeCreate,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("knowledge:read")),
 ) -> KnowledgeDocument:
     doc = KnowledgeDocument(
         title=body.title,
@@ -47,7 +47,7 @@ def patch_doc(
     doc_id: UUID,
     body: KnowledgePatch,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("knowledge:read")),
 ) -> KnowledgeDocument:
     doc = db.get(KnowledgeDocument, doc_id)
     if doc is None:
@@ -64,7 +64,7 @@ def patch_doc(
 def delete_doc(
     doc_id: UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("knowledge:read")),
 ) -> None:
     doc = db.get(KnowledgeDocument, doc_id)
     if doc is None:

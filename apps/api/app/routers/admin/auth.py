@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.deps import get_db, require_admin
+from app.services.rbac_out import user_to_out
 from app.services.tokens import issue_token_pair, revoke_refresh_token, rotate_refresh_token
 from lawbot.db.models import User
 from lawbot.domain.schemas import (
@@ -15,6 +16,7 @@ from lawbot.domain.schemas import (
     TokenResponse,
     UserOut,
     UserRole,
+    is_staff_role,
 )
 from lawbot.security import verify_password
 
@@ -27,10 +29,10 @@ def admin_login(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> TokenResponse:
-    user = db.scalar(select(User).where(User.email == body.email.lower().strip()))
+    user = db.scalar(select(User).where(User.email == body.email))
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    if user.disabled or user.role not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+    if user.disabled or user.role == UserRole.USER or not is_staff_role(user.role):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
     return issue_token_pair(db, user, settings)
 
@@ -55,5 +57,8 @@ def admin_logout(
 
 
 @router.get("/me", response_model=UserOut)
-def admin_me(user: User = Depends(require_admin)) -> User:
-    return user
+def admin_me(
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    return user_to_out(db, user, with_permissions=True)

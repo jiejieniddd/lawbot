@@ -1,0 +1,46 @@
+:root {
+  /* Brand categorical palette (brief) */
+  --categorical_data-color-1: #5470c6;
+  --categorical_data-color-2: #91cc75;
+  --categorical_data-color-3: #fac858;
+  --categorical_data-color-4: #ee6666;
+  --categorical_data-color-5: #73c0de;
+
+  --color-primary: var(--categorical_data-color-1);
+  --color-success: var(--categorical_data-color-2);
+  --color-accent: var(--categorical_data-color-3);
+  --color-danger: var(--categorical_data-color-4);
+  --color-info: var(--categorical_data-color-5);
+
+  --bg: #f3f5fa;
+  --surface: #ffffff;
+  --text: #1a2332;
+  --muted: #5b6578;
+  --border: #d8dee9;
+  --rail: #eef1f8;
+  --composer-bg: #ffffff;
+  --primary-soft: color-mix(in srgb, var(--color-primary) 12%, white);
+  --info-soft: color-mix(in srgb, var(--color-info) 14%, white);
+  --danger-soft: color-mix(in srgb, var(--color-danger) 12%, white);
+
+  --font-ui: "Sora", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Noto Sans SC", "Sora", "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  --fs-brand: 1.9rem;
+  --fs-title: 1.25rem;
+  --fs-body: 0.9375rem;
+  --fs-small: 0.8125rem;
+  --fs-fine: 0.75rem;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --space-rail: 260px;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-primary) 35%, transparent);
+
+  /* Element Plus alignment */
+  --el-color-primary: var(--color-primary);
+  --el-color-success: var(--color-success);
+  --el-color-warning: var(--color-accent);
+  --el-color-danger: var(--color-danger);
+  --el-color-info: var(--color-info);
+}

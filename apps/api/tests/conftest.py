@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,12 +15,17 @@ os.environ["SEED_ADMIN_EMAIL"] = "root"
 os.environ["SEED_ADMIN_PASSWORD"] = "Admin123!"
 os.environ["RETRIEVER_MODE"] = "fake"
 os.environ["EMBEDDING_MODE"] = "fake"
-os.environ["IMPORT_MAX_ROWS"] = "500"
+os.environ["IMPORT_MAX_ROWS"] = "200"
+_TEST_UPLOAD_ROOT = tempfile.mkdtemp(prefix="lawbot-uploads-")
+os.environ["UPLOAD_DIR"] = os.path.join(_TEST_UPLOAD_ROOT, "avatars")
+os.environ["AVATAR_MAX_BYTES"] = "2097152"
 
 from app.config import get_settings
 from lawbot.db.models import Base, User
 from lawbot.db.session import get_engine, get_sessionmaker
 from lawbot.domain.schemas import UserRole
+from lawbot.rbac.seed import seed_rbac_catalog
+from lawbot.rbac.service import ensure_user_has_role
 from lawbot.security import hash_password
 
 get_settings.cache_clear()
@@ -34,6 +40,12 @@ def db_engine():
     get_sessionmaker.cache_clear()
     engine = get_engine(settings.database_url)
     Base.metadata.create_all(engine)
+    factory = get_sessionmaker(settings.database_url)
+    session = factory()
+    try:
+        seed_rbac_catalog(session, commit=True)
+    finally:
+        session.close()
     yield engine
     Base.metadata.drop_all(engine)
     get_engine.cache_clear()
@@ -71,6 +83,8 @@ def admin_user(db_session: Session) -> User:
         role=UserRole.SUPER_ADMIN,
     )
     db_session.add(user)
+    db_session.flush()
+    ensure_user_has_role(db_session, user, UserRole.SUPER_ADMIN)
     db_session.commit()
     db_session.refresh(user)
     return user
@@ -85,6 +99,8 @@ def normal_admin(db_session: Session, admin_user: User) -> User:
         role=UserRole.ADMIN,
     )
     db_session.add(user)
+    db_session.flush()
+    ensure_user_has_role(db_session, user, UserRole.ADMIN)
     db_session.commit()
     db_session.refresh(user)
     return user

@@ -19,7 +19,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h2>Dashboard</h2>
+      <h2>仪表盘</h2>
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} md={8} lg={4}>
           <Card loading={isLoading}>

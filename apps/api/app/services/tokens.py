@@ -4,11 +4,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from lawbot.db.models import RefreshToken, User
-from lawbot.domain.schemas import TokenResponse, UserRole
+from lawbot.domain.schemas import TokenResponse, UserRole, is_staff_role
 from lawbot.security import (
     TOKEN_TYP_REFRESH,
     create_access_token,
@@ -82,7 +83,7 @@ def rotate_refresh_token(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     if user.disabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User disabled")
-    if require_admin and user.role not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+    if require_admin and (user.role == UserRole.USER or not is_staff_role(user.role)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
 
     row.revoked_at = now
@@ -106,4 +107,18 @@ def revoke_refresh_token(db: Session, refresh_token: str, settings: Settings) ->
 
     row.revoked_at = datetime.now(UTC)
     db.add(row)
+    db.commit()
+
+
+def revoke_all_refresh_tokens_for_user(db: Session, user_id: uuid.UUID) -> None:
+    now = datetime.now(UTC)
+    rows = db.scalars(
+        select(RefreshToken).where(
+            RefreshToken.user_id == user_id,
+            RefreshToken.revoked_at.is_(None),
+        )
+    ).all()
+    for row in rows:
+        row.revoked_at = now
+        db.add(row)
     db.commit()

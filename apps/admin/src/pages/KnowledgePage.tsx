@@ -12,8 +12,9 @@ import {
   message,
 } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { api } from '../api/client'
+import { useAuth } from '../auth/AuthContext'
 
 type Doc = {
   id: string
@@ -205,6 +206,8 @@ function DocumentsTab() {
 function ImportJobsTab() {
   const [maxRows, setMaxRows] = useState<number | null>(500)
   const qc = useQueryClient()
+  const { hasPermission } = useAuth()
+  const canImport = hasPermission('knowledge:import')
 
   const { data, isLoading } = useQuery({
     queryKey: ['knowledge-import-jobs'],
@@ -240,18 +243,22 @@ function ImportJobsTab() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <span>max_rows</span>
-        <InputNumber
-          min={0}
-          value={maxRows ?? undefined}
-          onChange={(v) => setMaxRows(v)}
-          placeholder="0=不截断"
-        />
-        <Button type="primary" loading={createJob.isPending} onClick={() => createJob.mutate()}>
-          触发导入
-        </Button>
-      </Space>
+      {canImport ? (
+        <Space style={{ marginBottom: 16 }} wrap>
+          <span>max_rows</span>
+          <InputNumber
+            min={0}
+            value={maxRows ?? undefined}
+            onChange={(v) => setMaxRows(v)}
+            placeholder="0=不截断"
+          />
+          <Button type="primary" loading={createJob.isPending} onClick={() => createJob.mutate()}>
+            触发导入
+          </Button>
+        </Space>
+      ) : (
+        <div style={{ marginBottom: 16, color: '#888' }}>当前账号无知识导入权限</div>
+      )}
       <Table
         rowKey="id"
         loading={isLoading}
@@ -353,16 +360,22 @@ function SearchTab() {
 }
 
 export default function KnowledgePage() {
+  const { hasPermission } = useAuth()
+  const items = useMemo(() => {
+    const tabs = [
+      { key: 'docs', label: '文档', children: <DocumentsTab /> },
+      { key: 'search', label: '试检索', children: <SearchTab /> },
+    ]
+    if (hasPermission('knowledge:read') || hasPermission('knowledge:import')) {
+      tabs.splice(1, 0, { key: 'jobs', label: '导入任务', children: <ImportJobsTab /> })
+    }
+    return tabs
+  }, [hasPermission])
+
   return (
     <div>
-      <h2 style={{ marginBottom: 16 }}>Knowledge</h2>
-      <Tabs
-        items={[
-          { key: 'docs', label: '文档', children: <DocumentsTab /> },
-          { key: 'jobs', label: '导入任务', children: <ImportJobsTab /> },
-          { key: 'search', label: '试检索', children: <SearchTab /> },
-        ]}
-      />
+      <h2 style={{ marginBottom: 16 }}>知识库</h2>
+      <Tabs items={items} />
     </div>
   )
 }

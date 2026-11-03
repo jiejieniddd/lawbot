@@ -66,6 +66,7 @@ def chat(
             request_id,
             retriever=retriever,
             credentials=credentials,
+            top_k=settings.retriever_top_k,
         ):
             if isinstance(item, ChatEvent):
                 if item.type == "token":
@@ -105,4 +106,12 @@ def chat(
         finally:
             session.close()
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

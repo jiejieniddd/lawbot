@@ -25,28 +25,28 @@ def test_list_users_filtered_by_role(client, admin_user):
     headers = _root_headers(client, admin_user)
     reg = client.post(
         "/api/v1/auth/register",
-        json={"email": "client1@example.com", "password": "secret12"},
+        json={"email": "client1", "password": "secret12"},
     )
     assert reg.status_code == 200
 
     users = client.get("/api/admin/users", headers=headers, params={"role": "user"})
     assert users.status_code == 200
     assert all(u["role"] == "user" for u in users.json())
-    assert any(u["email"] == "client1@example.com" for u in users.json())
+    assert any(u["email"] == "client1" for u in users.json())
 
     admins = client.get("/api/admin/users", headers=headers, params={"role": "admin"})
     assert admins.status_code == 200
-    assert all(u["role"] in ("admin", "super_admin") for u in admins.json())
+    assert all(u["role"] in ("admin", "super_admin", "operator") for u in admins.json())
     assert any(u["email"] == "root" and u["role"] == "super_admin" for u in admins.json())
     assert all(u.get("created_at") is not None for u in admins.json())
 
 
-def test_only_super_admin_can_create_admin(client, admin_user, normal_admin):
+def test_admin_with_manage_can_create_admin(client, admin_user, normal_admin):
     root = _root_headers(client, admin_user)
     created = client.post(
         "/api/admin/users/admins",
         headers=root,
-        json={"email": "peer@lawbot.local", "password": "PeerPass12", "display_name": "Peer"},
+        json={"email": "peer_admin", "password": "PeerPass12", "display_name": "Peer"},
     )
     assert created.status_code == 201, created.text
     assert created.json()["role"] == "admin"
@@ -58,17 +58,18 @@ def test_only_super_admin_can_create_admin(client, admin_user, normal_admin):
     )
     assert forbid_root.status_code == 400
 
+    # admin role includes admin:manage
     ops = _ops_headers(client, normal_admin)
-    denied = client.post(
+    created2 = client.post(
         "/api/admin/users/admins",
         headers=ops,
-        json={"email": "another@lawbot.local", "password": "PeerPass12"},
+        json={"email": "another_admin", "password": "PeerPass12"},
     )
-    assert denied.status_code == 403
+    assert created2.status_code == 201, created2.text
 
     login = client.post(
         "/api/admin/auth/login",
-        json={"email": "peer@lawbot.local", "password": "PeerPass12"},
+        json={"email": "peer_admin", "password": "PeerPass12"},
     )
     assert login.status_code == 200
 
@@ -78,7 +79,7 @@ def test_create_client_by_admin_and_root(client, admin_user, normal_admin):
     created = client.post(
         "/api/admin/users/clients",
         headers=ops,
-        json={"email": "newuser@example.com", "password": "secret12", "display_name": "NU"},
+        json={"email": "newuser01", "password": "secret12", "display_name": "NU"},
     )
     assert created.status_code == 201, created.text
     assert created.json()["role"] == "user"
@@ -86,19 +87,19 @@ def test_create_client_by_admin_and_root(client, admin_user, normal_admin):
     dup = client.post(
         "/api/admin/users/clients",
         headers=ops,
-        json={"email": "newuser@example.com", "password": "secret12"},
+        json={"email": "newuser01", "password": "secret12"},
     )
     assert dup.status_code == 400
 
     # C-end login ok; admin login rejected
     user_login = client.post(
         "/api/v1/auth/login",
-        json={"email": "newuser@example.com", "password": "secret12"},
+        json={"email": "newuser01", "password": "secret12"},
     )
     assert user_login.status_code == 200
     admin_login = client.post(
         "/api/admin/auth/login",
-        json={"email": "newuser@example.com", "password": "secret12"},
+        json={"email": "newuser01", "password": "secret12"},
     )
     assert admin_login.status_code == 403
 
@@ -109,6 +110,7 @@ def test_create_client_by_admin_and_root(client, admin_user, normal_admin):
         json={"email": "fromroot", "password": "secret12"},
     )
     assert created2.status_code == 201
+    assert created2.json()["display_name"] == "fromroot"
 
 
 def test_cannot_disable_root(client, admin_user):
@@ -129,7 +131,7 @@ def test_normal_admin_cannot_disable_other_admin(client, admin_user, normal_admi
     peer = client.post(
         "/api/admin/users/admins",
         headers=root,
-        json={"email": "peer2@lawbot.local", "password": "PeerPass12"},
+        json={"email": "peer2_admin", "password": "PeerPass12"},
     )
     assert peer.status_code == 201
     peer_id = peer.json()["id"]
@@ -157,7 +159,7 @@ def test_normal_admin_can_disable_end_user(client, normal_admin):
     created = client.post(
         "/api/admin/users/clients",
         headers=ops,
-        json={"email": "disable-me@example.com", "password": "secret12"},
+        json={"email": "disable_me", "password": "secret12"},
     )
     assert created.status_code == 201
     target_id = created.json()["id"]
@@ -200,7 +202,7 @@ def test_stats_split_counts(client, admin_user):
     headers = _root_headers(client, admin_user)
     client.post(
         "/api/v1/auth/register",
-        json={"email": "stat-user@example.com", "password": "secret12"},
+        json={"email": "stat_user", "password": "secret12"},
     )
     overview = client.get("/api/admin/stats/overview", headers=headers)
     assert overview.status_code == 200

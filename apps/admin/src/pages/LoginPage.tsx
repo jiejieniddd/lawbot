@@ -36,12 +36,12 @@ export default function LoginPage() {
     >
       <Card style={{ width: 400 }}>
         <Typography.Title level={3} style={{ fontFamily: 'Georgia, serif' }}>
-          LawBot Admin
+          律问后台
         </Typography.Title>
         {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} />}
-        <Form layout="vertical" onFinish={onFinish} initialValues={{ email: 'root' }}>
+        <Form layout="vertical" onFinish={onFinish}>
           <Form.Item name="email" label="账号" rules={[{ required: true, message: '请输入账号' }]}>
-            <Input placeholder="例如 root" autoComplete="username" />
+            <Input placeholder="请输入账号" autoComplete="username" />
           </Form.Item>
           <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
             <Input.Password placeholder="密码" autoComplete="current-password" />

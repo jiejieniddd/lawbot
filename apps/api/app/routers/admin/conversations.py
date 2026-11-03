@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.deps import get_db, require_admin
+from app.deps import get_db, require_permission
 from lawbot.db.models import Conversation, Message, User
 from lawbot.domain.schemas import ConversationOut, MessageOut
 
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/conversations", tags=["admin-conversations"])
 @router.get("", response_model=list[ConversationOut])
 def list_all_conversations(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("audit:read")),
 ) -> list[Conversation]:
     return list(
         db.scalars(select(Conversation).order_by(Conversation.updated_at.desc()).limit(200)).all()
@@ -27,7 +27,7 @@ def list_all_conversations(
 def list_messages_admin(
     conversation_id: UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("audit:read")),
 ) -> list[Message]:
     conv = db.get(Conversation, conversation_id)
     if conv is None:

@@ -7,11 +7,11 @@ C 端法律咨询 AI Agent + 后台管理（生产形态骨架）。
 | `apps/api` | FastAPI + JWT + SSE + LangGraph |
 | `apps/web` | Vue 3 + Element Plus（C 端） |
 | `apps/admin` | React + Ant Design（后台） |
-| `apps/worker` | 知识导入：认领 `knowledge_import_jobs` → HF → Qdrant+OpenSearch |
+| `apps/worker` | 知识导入：认领 `knowledge_import_jobs` → HF → memory 落盘或 Qdrant（OpenSearch 可选） |
 | `packages/lawbot` | 共享 domain / db / rag / agent / knowledge |
 | `docs/architecture.md` | 架构说明 |
 
-架构要点：User/Admin → API → LangGraph + Hybrid RRF（Qdrant+OpenSearch，失败回退 FakeRetriever）+ PostgreSQL + Redis。详见 [docs/architecture.md](docs/architecture.md)。
+架构要点：User/Admin → API → LangGraph + Hybrid RRF（`memory` / Qdrant±OpenSearch；空结果返回空引用，**不再 Fake 回退**）+ PostgreSQL + Redis。详见 [docs/architecture.md](docs/architecture.md)。
 
 ## 快速开始（Docker Compose 全栈）
 
@@ -22,7 +22,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-一次拉起：**postgres、redis、qdrant、opensearch、api、worker、web、admin**。
+一次拉起：**postgres、redis、qdrant、api、worker、web、admin**（默认不含 OpenSearch；低配推荐 `RETRIEVER_MODE=memory`）。
 
 | 服务 | URL / 端口 |
 |------|------------|
@@ -31,10 +31,16 @@ docker compose up --build
 | API | http://localhost:8000 |
 | API docs | http://localhost:8000/docs |
 | Qdrant | http://localhost:6333 |
-| OpenSearch | http://localhost:9200 |
+| OpenSearch | http://localhost:9200（需 `--profile full`） |
 | Worker | 后台轮询导入任务（无对外端口） |
 
-`api` 等待 postgres / redis / opensearch healthy 与 qdrant started；`web`/`admin` 等待 `api` healthy。前端经 nginx 反代 `/api`。
+`api` 等待 postgres / redis healthy 与 qdrant started；`web`/`admin` 等待 `api` healthy。前端经 nginx 反代 `/api`。
+
+完整 RAG（Qdrant+OpenSearch hybrid，内存建议 Docker ≥3GB）：
+
+```bash
+RETRIEVER_MODE=hybrid EMBEDDING_MODE=auto docker compose --profile full up --build
+```
 
 仅基础设施（分端开发）：
 
@@ -50,7 +56,7 @@ docker compose up postgres redis
 | `admin` | 由 root 在后台创建 | — | 可登录后台；可管 C 端用户；**不能**创建管理员 |
 | `user` | C 端自助注册，或后台创建 | — | 仅 C 端；不能登录后台 |
 
-后台登录为账号+密码（字段名仍为 `email`，允许非邮箱账号如 `root`）。
+C 端与后台均为**账号+密码**登录（API JSON 字段名仍为 `email`，存的是登录账号）。新注册账号规则：3–32 位小写字母/数字/下划线（如 `myuser`）；存量带 `@` 的老账号仍可登录。种子超管示例：`root`。
 
 ## 不对 C 端 / 第三方提供平台 API Key
 
@@ -70,12 +76,50 @@ LawBot **不提供**平台级对外 `api_keys`、`lb_` Bearer、或「开发者�
 
 加密：设置 `.env` 中 `ENCRYPTION_KEY`（Fernet key）。为空时由 `JWT_SECRET` 派生——**生产请使用独立稳定的 ENCRYPTION_KEY**，否则轮换 JWT 会导致无法解密已存 Key。
 
+## 低配启用真实检索（推荐，无需 OpenSearch）
+
+目标：法律问题引用的 `source_id` **不是** `fake-*`；无命中则无引用卡片，由**已配置的 LLM**贴题作答（勿用 `hybrid` 空库硬顶）。适合 **Windows + 仅本机 `uv run` api**，不必 `docker compose --profile full`。
+
+**验收步骤（可复制）：**
+
+```powershell
+# 在仓库根目录；先准备 .env（可从 .env.example 复制）
+# 必填低配项：
+# RETRIEVER_MODE=memory
+# INDEX_BACKEND=memory
+# RAG_MEMORY_DIR=data/rag_memory
+# IMPORT_MAX_ROWS=200
+# EMBEDDING_MODE=fake
+# HF_DATASET_ID=senry5433/china-effective-laws-regulations
+
+# 1) 小样本导入到落盘索引（约 100–200 条即可，勿全量）
+uv run python scripts/import_local_sample.py --max-rows 200 --backend memory
+
+# 2) 启动 / 重启 api（必须重启才能加载 data/rag_memory）
+cd apps/api
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 3) Admin 试检索「劳动合同」→ source_id 非 fake-*
+# 4) C 端法律问题 → 有真实引用，或空引用 + 真模型贴题回答（需 Admin 已启用供应商）
+```
+
+可选离线数据集：
+
+```powershell
+huggingface-cli download senry5433/china-effective-laws-regulations --repo-type dataset --local-dir data/hf/china-laws
+# .env: HF_DATASET_ID=data/hf/china-laws  以及 HF_DATASETS_OFFLINE=1
+```
+
+- `RETRIEVER_MODE=hybrid`：需本机 Qdrant 且已导入；OpenSearch 可选（挂了则仅向量，不会 Fake 回退）
+- `RETRIEVER_MODE=fake`：仅开发占位，会出现 `fake-*`，不要当真实知识库
+- 已配置模型时：空检索走真模型「未检索到」约束作答，不再塞「合同、转账」跑题模拟稿
+
 ## HF 法规数据集导入与免责
 
 **步骤：**
 
-1. `docker compose up --build`（含 worker + Qdrant + OpenSearch）  
-2. Admin → Knowledge → **导入任务** → 设置 `max_rows`（默认环境 `IMPORT_MAX_ROWS=500`，`0`=不截断）→ 触发导入  
+1. `docker compose up --build`（默认不含 OpenSearch；完整 RAG 用 `--profile full`）  
+2. Admin → Knowledge → **导入任务** → 设置 `max_rows`（默认环境 `IMPORT_MAX_ROWS=200`，`0`=不截断）→ 触发导入  
    或：
 
 ```bash
@@ -139,7 +183,7 @@ npm install && npm run dev   # :5174
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"demo@example.com","password":"secret12"}' | jq -r .access_token)
+  -d '{"email":"myuser","password":"secret12"}' | jq -r .access_token)
 
 CID=$(curl -s -X POST http://localhost:8000/api/v1/conversations \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{}' | jq -r .id)
@@ -161,11 +205,14 @@ curl -s http://localhost:8000/api/admin/stats/overview \
 
 ### C 端 `/api/v1`（JWT user）
 
-- `POST /auth/register`、`POST /auth/login`、`POST /auth/refresh`、`POST /auth/logout`、`GET /auth/me`
+- `POST /auth/register`、`POST /auth/login`（body.`email` 为登录账号）、`POST /auth/refresh`、`POST /auth/logout`、`GET /auth/me`、`PATCH /auth/me`（改昵称）、`POST /auth/me/password`（改密码并吊销全部 refresh）
+- `POST /auth/me/avatar`（multipart 头像）、`DELETE /auth/me/avatar`；静态访问 `/uploads/avatars/*`
 - `POST|GET /conversations`、`GET /conversations/{id}`、`GET /conversations/{id}/messages`
-- `POST /chat`（SSE：`token` \| `citation` \| `done` \| `error`）
+- `POST /chat`（SSE：`token` \| `citation` \| `done` \| `error`；正文为检索增强综合咨询，法条详情见 citation 卡片，正文不做法条清单）。能力边界：聚焦中国法域法律咨询；闲聊可；领域外短拒且不检索。
 
 登录/注册返回 `access_token`（短效）、`refresh_token`（长效）、`token_type`、`expires_in`（秒）。`ACCESS_TOKEN_EXPIRE_MINUTES` 默认 15，`REFRESH_TOKEN_EXPIRE_DAYS` 默认 14。
+
+C 端 Web 个人中心：`/profile`（需登录），可改昵称、改密码、上传/移除头像；改密成功后需重新登录。头像落盘目录由 `UPLOAD_DIR`（默认 `data/uploads/avatars`）控制，单文件上限 `AVATAR_MAX_BYTES`（默认 2MB），仅 jpeg/png/webp；开发经 Vite 代理 `/uploads`，Compose 用 volume `uploads_data` 持久化。
 
 ### Admin `/api/admin`（JWT admin / super_admin）
 
@@ -188,8 +235,8 @@ GitHub Actions：`.github/workflows/ci.yml`（`uv run pytest`）。前端 typech
 
 ## 已知限制
 
-- 未导入完成前引用可能仍为 FakeRetriever（`fake-*`）
-- 不含地方法规；全量约 70 万条需调大/取消 `IMPORT_MAX_ROWS`（注意机器内存，OpenSearch 默认 JVM 512m）
+- 未导入或 `RETRIEVER_MODE=fake` 时：前者 citations 为空；后者才出现 `fake-*`（请改用 memory/hybrid 并导入）
+- 不含地方法规；全量约 70 万条勿在低配机跑；小样本用 `IMPORT_MAX_ROWS=100–200`
 - SSE 无断线续传；未上 K8s
 
 ## 后续可选

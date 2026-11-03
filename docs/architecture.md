@@ -7,7 +7,7 @@
 | `apps/web` | C 端：JWT 注册登录、会话、SSE、CitationCard、免责（含数据集非官方）；无 API Key UI |
 | `apps/admin` | 后台：统计、用户禁用、会话审计、模型供应商 CRUD、知识导入/试检索、脱敏设置；无平台 API Key UI |
 | `apps/api` | 统一 FastAPI：JWT、业务 API、SSE、种子与健康检查 |
-| `apps/worker` | 认领 `knowledge_import_jobs`，HF 过滤/chunk，双写 Qdrant+OpenSearch |
+| `apps/worker` | 认领 `knowledge_import_jobs`，HF 过滤/chunk，写入 memory 落盘或 Qdrant（OpenSearch 可选降级） |
 | `packages/lawbot` | 共享 domain / SQLAlchemy+Alembic / Hybrid RAG / LangGraph / knowledge |
 | PostgreSQL | 用户、会话、消息（含 citations）、知识文档元数据、导入任务、LLM 供应商 |
 | Redis | `/ready` 探测；限流/缓存占位 |
@@ -24,14 +24,16 @@ flowchart LR
   admin -->|JWT_admin_/api/admin| api
   api --> graph[LangGraph]
   graph --> hybrid[Hybrid_RRF]
+  hybrid --> memory[(rag_memory_disk)]
   hybrid --> qdrant[(Qdrant)]
-  hybrid --> os[(OpenSearch)]
-  hybrid -->|down| fake[FakeRetriever]
+  hybrid --> os[(OpenSearch_optional)]
+  hybrid -->|empty| emptyCite[empty_citations]
   admin -->|create_job| jobs[(knowledge_import_jobs)]
   worker[apps_worker] --> jobs
   worker --> hf[HF_articles]
+  worker --> memory
   worker --> qdrant
-  worker --> os
+  worker -.->|degraded| os
   api --> db[(PostgreSQL)]
   api --> redis[(Redis)]
 ```
@@ -54,12 +56,17 @@ JWT claim：`sub`, `email`, `role`. Disabled users：login / authenticated calls
 classify → collect → retrieve(Hybrid RRF) → answer(stream) → guardrail
 ```
 
-- Vector：Qdrant collection `lawbot_articles_v1`
-- Lexical：OpenSearch index `lawbot_articles_v1`
-- Fusion：Reciprocal Rank Fusion；任一侧失败/空结果则另一侧仍可用；两侧皆空 → FakeRetriever
-- `RETRIEVER_MODE=hybrid|fake|memory`
+- Vector：Qdrant collection `lawbot_articles_v1`，或 memory 落盘向量（`data/rag_memory`）
+- Lexical：OpenSearch index `lawbot_articles_v1`（可选）；失败则仅向量侧
+- Fusion：Reciprocal Rank Fusion；任一侧失败/空则另一侧仍可用；**两侧皆空 → `[]`，不再 FakeRetriever**
+- `RETRIEVER_MODE=memory|hybrid|fake`（`fake` 仅开发占位）
+- `INDEX_BACKEND=memory|qdrant`；导入时 OpenSearch 不可用 → `stats.opensearch=degraded`
 
 SSE：`token` | `citation` | `done` | `error`（`guardrail_blocked`）。
+
+回答为**检索增强综合咨询**：正文先结论与说理，再短引用规范要点，不做「法条清单」；完整条文经 `citation` 事件由前端 `CitationCard` 展示。检索 `top_k` 取自 `RETRIEVER_TOP_K`（默认 5）。
+
+能力边界：意图含 `chitchat` | `legal` | `ambiguous` | `out_of_scope`。助手聚焦中国法域法律咨询；轻量闲聊可短回；领域外任务（写代码、烹饪等）短拒且**不检索**。
 
 C 端仅 JWT；`CitationCard` 展示 law_name、article_no、text、source_id；免责含「第三方数据集非国家官方汇编」。
 

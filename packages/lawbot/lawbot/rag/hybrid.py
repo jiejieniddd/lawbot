@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any
 
 from lawbot.domain.schemas import Citation
 from lawbot.rag.base import RetrievedChunk
-from lawbot.rag.fake import FakeRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +34,11 @@ class HybridRetriever:
         bm25_search: Callable[[str, int], list[RetrievedChunk]] | None = None,
         embed_query: Callable[[str], list[float]] | None = None,
         rrf_k: int = 60,
-        fallback: FakeRetriever | None = None,
     ) -> None:
         self.vector_search = vector_search
         self.bm25_search = bm25_search
         self.embed_query = embed_query
         self.rrf_k = rrf_k
-        self.fallback = fallback or FakeRetriever()
 
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         lists: list[list[RetrievedChunk]] = []
@@ -63,7 +59,7 @@ class HybridRetriever:
 
         lists = [lst for lst in lists if lst]
         if not lists:
-            logger.warning("HybridRetriever backends empty; using FakeRetriever")
-            return self.fallback.retrieve(query, top_k=top_k)
+            logger.warning("HybridRetriever backends empty; returning no citations")
+            return []
 
         return reciprocal_rank_fusion(lists, k=self.rrf_k, top_k=top_k)

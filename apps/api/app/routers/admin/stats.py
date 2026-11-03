@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.deps import get_db, require_admin
+from app.deps import get_db, require_permission
 from lawbot.db.models import Conversation, KnowledgeDocument, Message, User
 from lawbot.domain.schemas import StatsOverview, UserRole
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/stats", tags=["admin-stats"])
 @router.get("/overview", response_model=StatsOverview)
 def overview(
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_permission("stats:read")),
 ) -> StatsOverview:
     users = db.scalar(select(func.count()).select_from(User)) or 0
     end_users = (
@@ -24,7 +24,7 @@ def overview(
         db.scalar(
             select(func.count())
             .select_from(User)
-            .where(User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]))
+            .where(User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.OPERATOR]))
         )
         or 0
     )

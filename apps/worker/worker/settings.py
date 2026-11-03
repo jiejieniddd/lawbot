@@ -11,10 +11,15 @@ class WorkerSettings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://lawbot:lawbot@localhost:5432/lawbot"
     worker_poll_seconds: int = 5
-    import_max_rows: int = Field(default=500, validation_alias=AliasChoices("IMPORT_MAX_ROWS", "import_max_rows"))
+    import_max_rows: int = Field(default=200, validation_alias=AliasChoices("IMPORT_MAX_ROWS", "import_max_rows"))
     hf_dataset_id: str = Field(
         default="senry5433/china-effective-laws-regulations",
         validation_alias=AliasChoices("HF_DATASET_ID", "hf_dataset_id"),
+    )
+    index_backend: str = Field(default="memory", validation_alias=AliasChoices("INDEX_BACKEND", "index_backend"))
+    rag_memory_dir: str = Field(
+        default="data/rag_memory",
+        validation_alias=AliasChoices("RAG_MEMORY_DIR", "rag_memory_dir"),
     )
     qdrant_url: str = Field(default="http://localhost:6333", validation_alias=AliasChoices("QDRANT_URL"))
     opensearch_url: str = Field(default="http://localhost:9200", validation_alias=AliasChoices("OPENSEARCH_URL"))

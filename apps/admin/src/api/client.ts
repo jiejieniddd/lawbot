@@ -70,7 +70,8 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    if ((status === 401 || status === 403) && !onAuth) {
+    // Only hard-logout on unauthenticated; 403 is permission denied for RBAC UI
+    if (status === 401 && !onAuth) {
       clearAdminSession()
       if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
         window.location.assign('/login')

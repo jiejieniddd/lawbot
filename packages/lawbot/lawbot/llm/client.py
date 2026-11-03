@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -69,6 +70,33 @@ def _litellm_model_name(provider: str, model: str) -> str:
     return f"{prefix}/{model}"
 
 
+def _completion_messages(*, prompt: str, system: str | None) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    return messages
+
+
+def _completion_kwargs(
+    *,
+    prompt: str,
+    credentials: ProviderCredentials,
+    system: str | None,
+    stream: bool = False,
+) -> dict:
+    model = _litellm_model_name(credentials.provider.provider, credentials.model)
+    kwargs: dict = {
+        "model": model,
+        "messages": _completion_messages(prompt=prompt, system=system),
+        "api_key": credentials.api_key,
+        "stream": stream,
+    }
+    if credentials.base_url:
+        kwargs["api_base"] = credentials.base_url
+    return kwargs
+
+
 def complete_text(
     *,
     prompt: str,
@@ -85,26 +113,53 @@ def complete_text(
         logger.warning("litellm not installed; falling back to mock")
         return ""
 
-    model = _litellm_model_name(credentials.provider.provider, credentials.model)
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-
-    kwargs: dict = {
-        "model": model,
-        "messages": messages,
-        "api_key": credentials.api_key,
-    }
-    if credentials.base_url:
-        kwargs["api_base"] = credentials.base_url
-
     try:
-        resp = litellm.completion(**kwargs)
+        resp = litellm.completion(**_completion_kwargs(prompt=prompt, credentials=credentials, system=system))
         return resp.choices[0].message.content or ""
     except Exception:
         logger.exception("LiteLLM completion failed for provider=%s; using mock", credentials.provider.name)
         return ""
+
+
+def complete_text_stream(
+    *,
+    prompt: str,
+    credentials: ProviderCredentials | None,
+    system: str | None = None,
+) -> Iterator[str]:
+    """Yield text deltas from LiteLLM stream=True. Empty iterator on failure / no credentials."""
+    if credentials is None:
+        return
+
+    try:
+        import litellm
+    except ImportError:
+        logger.warning("litellm not installed; falling back to mock stream")
+        return
+
+    try:
+        stream = litellm.completion(
+            **_completion_kwargs(
+                prompt=prompt,
+                credentials=credentials,
+                system=system,
+                stream=True,
+            )
+        )
+        for chunk in stream:
+            choices = getattr(chunk, "choices", None) or []
+            if not choices:
+                continue
+            delta = getattr(choices[0], "delta", None)
+            text = getattr(delta, "content", None) if delta is not None else None
+            if text:
+                yield text
+    except Exception:
+        logger.exception(
+            "LiteLLM stream failed for provider=%s; falling back to mock",
+            credentials.provider.name,
+        )
+        return
 
 
 def test_provider_connectivity(

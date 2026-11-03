@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.deps import get_db, require_admin
+from app.deps import get_db, require_permission
 from lawbot.crypto import decrypt_secret, encrypt_secret, mask_api_key
 from lawbot.db.models import LLMProvider, User
 from lawbot.domain.schemas import LLMProviderCreate, LLMProviderOut, LLMProviderPatch
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/llm-providers", tags=["admin-llm-providers"])
 
 
 @router.get("/catalog")
-def provider_catalog(_: User = Depends(require_admin)) -> dict:
+def provider_catalog(_: User = Depends(require_permission("provider:manage"))) -> dict:
     """Read-only model/provider catalog for Admin UI presets."""
     return get_llm_provider_catalog()
 
@@ -50,7 +50,7 @@ def _to_out(row: LLMProvider, settings: Settings) -> LLMProviderOut:
 @router.get("", response_model=list[LLMProviderOut])
 def list_providers(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("provider:manage")),
     settings: Settings = Depends(get_settings),
 ) -> list[LLMProviderOut]:
     rows = db.scalars(select(LLMProvider).order_by(LLMProvider.priority.asc())).all()
@@ -61,7 +61,7 @@ def list_providers(
 def create_provider(
     body: LLMProviderCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("provider:manage")),
     settings: Settings = Depends(get_settings),
 ) -> LLMProviderOut:
     row = LLMProvider(
@@ -88,7 +88,7 @@ def patch_provider(
     provider_id: UUID,
     body: LLMProviderPatch,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("provider:manage")),
     settings: Settings = Depends(get_settings),
 ) -> LLMProviderOut:
     row = db.get(LLMProvider, provider_id)
@@ -113,7 +113,7 @@ def patch_provider(
 def delete_provider(
     provider_id: UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("provider:manage")),
 ) -> None:
     row = db.get(LLMProvider, provider_id)
     if row is None:
@@ -126,7 +126,7 @@ def delete_provider(
 def test_provider(
     provider_id: UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_permission("provider:manage")),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     row = db.get(LLMProvider, provider_id)

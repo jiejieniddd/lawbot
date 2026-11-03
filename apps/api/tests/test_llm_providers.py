@@ -10,7 +10,7 @@ def _admin_headers(client, admin_user):
 def test_user_forbidden_on_llm_providers(client):
     reg = client.post(
         "/api/v1/auth/register",
-        json={"email": "u-llm@example.com", "password": "secret12"},
+        json={"email": "u_llm01", "password": "secret12"},
     )
     token = reg.json()["access_token"]
     resp = client.get(

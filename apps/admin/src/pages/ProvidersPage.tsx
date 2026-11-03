@@ -165,12 +165,12 @@ export default function ProvidersPage() {
   function onProviderChange(provider: string) {
     setModelPreset('')
     const entry = findProviderEntry(catalog, provider)
-    const currentBase = form.getFieldValue('base_url')
-    const patch: Partial<ProviderForm> = { provider, default_model: '' }
-    if (entry?.recommended_base_url && !String(currentBase || '').trim()) {
-      patch.base_url = entry.recommended_base_url
-    }
-    form.setFieldsValue(patch)
+    form.setFieldsValue({
+      provider,
+      default_model: '',
+      // Always follow the selected vendor; clear when catalog has no recommendation
+      base_url: entry?.recommended_base_url || '',
+    })
   }
 
   function onModelPresetChange(value: string) {
@@ -301,7 +301,7 @@ export default function ProvidersPage() {
             <Select options={providerOptions} onChange={onProviderChange} />
           </Form.Item>
           <Form.Item name="base_url" label="Base URL">
-            <Input placeholder="可选；切换 provider 时可自动预填推荐地址" />
+            <Input placeholder="随 Provider 自动填充推荐地址，可手动改" />
           </Form.Item>
           <Form.Item
             name="api_key"

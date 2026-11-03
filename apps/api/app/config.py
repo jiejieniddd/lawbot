@@ -38,9 +38,13 @@ class Settings(BaseSettings):
     )
 
     # RAG / import
-    retriever_mode: str = Field(default="hybrid", validation_alias=AliasChoices("RETRIEVER_MODE"))
+    retriever_mode: str = Field(default="memory", validation_alias=AliasChoices("RETRIEVER_MODE"))
     retriever_top_k: int = Field(default=5, validation_alias=AliasChoices("RETRIEVER_TOP_K"))
     rrf_k: int = Field(default=60, validation_alias=AliasChoices("RRF_K"))
+    rag_memory_dir: str = Field(
+        default="data/rag_memory", validation_alias=AliasChoices("RAG_MEMORY_DIR")
+    )
+    index_backend: str = Field(default="memory", validation_alias=AliasChoices("INDEX_BACKEND"))
     qdrant_url: str = Field(default="http://localhost:6333", validation_alias=AliasChoices("QDRANT_URL"))
     qdrant_collection: str = Field(
         default="lawbot_articles_v1", validation_alias=AliasChoices("QDRANT_COLLECTION")
@@ -51,7 +55,7 @@ class Settings(BaseSettings):
     opensearch_index: str = Field(
         default="lawbot_articles_v1", validation_alias=AliasChoices("OPENSEARCH_INDEX")
     )
-    import_max_rows: int = Field(default=500, validation_alias=AliasChoices("IMPORT_MAX_ROWS"))
+    import_max_rows: int = Field(default=200, validation_alias=AliasChoices("IMPORT_MAX_ROWS"))
     hf_dataset_id: str = Field(
         default="senry5433/china-effective-laws-regulations",
         validation_alias=AliasChoices("HF_DATASET_ID"),
@@ -61,6 +65,9 @@ class Settings(BaseSettings):
     embedding_api_base: str | None = Field(default=None, validation_alias=AliasChoices("EMBEDDING_API_BASE"))
     embedding_dim: int = Field(default=384, validation_alias=AliasChoices("EMBEDDING_DIM"))
     embedding_mode: str = Field(default="auto", validation_alias=AliasChoices("EMBEDDING_MODE"))
+
+    upload_dir: str = Field(default="data/uploads/avatars", validation_alias=AliasChoices("UPLOAD_DIR"))
+    avatar_max_bytes: int = Field(default=2_097_152, validation_alias=AliasChoices("AVATAR_MAX_BYTES"))
 
     @property
     def cors_origin_list(self) -> list[str]:

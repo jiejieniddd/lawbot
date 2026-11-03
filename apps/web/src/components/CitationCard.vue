@@ -5,44 +5,52 @@ defineProps<{ citation: Citation }>()
 </script>
 
 <template>
-  <div class="cite">
+  <div class="cite-panel">
     <div class="cite-head">
       <strong>{{ citation.law_name }} {{ citation.article_no }}</strong>
       <span v-if="citation.category" class="meta">{{ citation.category }}</span>
       <span v-if="citation.effective_date" class="meta">{{ citation.effective_date }}</span>
     </div>
     <p class="cite-text">{{ citation.text }}</p>
-    <div class="cite-id">source_id: {{ citation.source_id }}</div>
+    <div class="cite-id">{{ citation.source_id }}</div>
   </div>
 </template>
 
 <style scoped>
-.cite {
-  background: #fff8e8;
-  border-left: 3px solid #c2a05e;
-  padding: 8px 10px;
-  font-size: 0.85rem;
-  max-width: 640px;
+.cite-panel {
+  background: var(--info-soft);
+  border: 1px solid color-mix(in srgb, var(--color-info) 35%, var(--border));
+  border-left: 3px solid var(--color-info);
+  padding: 0.55rem 0.7rem;
+  font-size: var(--fs-small);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
+
 .cite-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 0.35rem 0.65rem;
   align-items: baseline;
+  font-family: var(--font-ui);
+  color: var(--text);
 }
+
 .meta {
-  color: #8a7350;
-  font-size: 0.75rem;
+  color: var(--muted);
+  font-size: var(--fs-fine);
 }
+
 .cite-text {
-  margin: 4px 0 0;
-  color: #444;
+  margin: 0.3rem 0 0;
+  color: var(--text);
   white-space: pre-wrap;
+  line-height: 1.45;
 }
+
 .cite-id {
-  margin-top: 4px;
+  margin-top: 0.3rem;
   font-size: 0.7rem;
-  color: #999;
+  color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 </style>

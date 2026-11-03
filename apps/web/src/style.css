@@ -1,13 +1,45 @@
+@import "./styles/tokens.css";
+
 * {
   box-sizing: border-box;
 }
+
 html,
 body,
 #app {
   margin: 0;
   min-height: 100%;
-  font-family: "IBM Plex Sans", "Segoe UI", "PingFang SC", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
+
 a {
-  color: #1f4e79;
+  color: var(--color-primary);
+}
+
+a:focus-visible,
+button:focus-visible,
+.el-button:focus-visible,
+.el-input__wrapper:focus-within {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -61,7 +61,15 @@ def process_job(job: KnowledgeImportJob) -> None:
     recreate = bool(cfg.get("recreate", False))
     dataset_id = str(cfg.get("dataset", settings.hf_dataset_id))
     subset = str(cfg.get("subset", "articles"))
-    logger.info("processing job=%s max_rows=%s dataset=%s", job.id, max_rows, dataset_id)
+    index_backend = str(cfg.get("index_backend", settings.index_backend)).lower()
+    memory_dir = str(cfg.get("memory_dir", settings.rag_memory_dir))
+    logger.info(
+        "processing job=%s max_rows=%s dataset=%s backend=%s",
+        job.id,
+        max_rows,
+        dataset_id,
+        index_backend,
+    )
     try:
         stats = run_import(
             max_rows=max_rows,
@@ -77,6 +85,8 @@ def process_job(job: KnowledgeImportJob) -> None:
             embedding_dim=settings.embedding_dim,
             embedding_mode=settings.embedding_mode,
             recreate=recreate,
+            index_backend=index_backend,
+            memory_dir=memory_dir,
         )
         finish_job(settings.database_url, job.id, status=ImportJobStatus.SUCCEEDED, stats=stats)
         logger.info("job=%s succeeded stats=%s", job.id, stats)
