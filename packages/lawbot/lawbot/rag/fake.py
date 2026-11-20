@@ -17,6 +17,7 @@ class FakeRetriever:
             category="labor",
             jurisdiction="CN",
             source_url="https://example.local/labor-38",
+            status="有效",
         ),
         Citation(
             law_name="中华人民共和国民法典",
@@ -27,6 +28,7 @@ class FakeRetriever:
             category="civil",
             jurisdiction="CN",
             source_url="https://example.local/civil-577",
+            status="有效",
         ),
         Citation(
             law_name="中华人民共和国消费者权益保护法",
@@ -37,6 +39,7 @@ class FakeRetriever:
             category="consumer",
             jurisdiction="CN",
             source_url="https://example.local/consumer-55",
+            status="有效",
         ),
     ]
 

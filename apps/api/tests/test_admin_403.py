@@ -1,7 +1,7 @@
 def test_user_token_forbidden_on_admin(client):
     reg = client.post(
         "/api/v1/auth/register",
-        json={"email": "normal01", "password": "secret12"},
+        json={"email": "normal01@example.com", "password": "secret12"},
     )
     token = reg.json()["access_token"]
     resp = client.get(

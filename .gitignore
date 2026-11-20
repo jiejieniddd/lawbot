@@ -3,6 +3,7 @@
 data/uploads/
 data/rag_memory/
 data/hf/
+data/agent_traces/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -21,3 +22,7 @@ htmlcov/
 .vscode/
 apps/web/dist/
 apps/admin/dist/
+
+# Personal interview prep (local only)
+docs/interview-agent-qa.md
+

@@ -18,7 +18,7 @@ async function onSubmit() {
     await auth.login(account.value, password.value)
     router.push((route.query.redirect as string) || '/chat')
   } catch (e) {
-    ElMessage.error((e as Error).message)
+    ElMessage.error((e as Error).message || '账号或密码错误')
   } finally {
     loading.value = false
   }
@@ -37,13 +37,13 @@ async function onSubmit() {
         <h1>登录</h1>
         <p class="lead">使用账号进入咨询工作台</p>
         <el-form class="auth-form" label-position="top" @submit.prevent="onSubmit">
-          <el-form-item label="账号">
+          <el-form-item label="邮箱">
             <el-input
               v-model="account"
               type="text"
               autocomplete="username"
               size="large"
-              placeholder="请输入账号"
+              placeholder="请输入邮箱"
             />
           </el-form-item>
           <el-form-item label="密码">
@@ -65,6 +65,9 @@ async function onSubmit() {
             登录
           </el-button>
         </el-form>
+        <p class="hint">
+          <router-link to="/forgot-password">忘记密码</router-link>
+        </p>
         <p class="hint">
           没有账号？
           <router-link to="/register">注册</router-link>

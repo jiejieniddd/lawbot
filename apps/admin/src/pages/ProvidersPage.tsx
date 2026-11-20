@@ -146,11 +146,19 @@ export default function ProvidersPage() {
 
   const testConn = useMutation({
     mutationFn: async (id: string) =>
-      (await api.post<{ ok: boolean; message: string }>(`/api/admin/llm-providers/${id}/test`))
-        .data,
+      (
+        await api.post<{ ok: boolean; message: string; detail?: string | null }>(
+          `/api/admin/llm-providers/${id}/test`,
+        )
+      ).data,
     onSuccess: (res) => {
-      if (res.ok) message.success(res.message || '连通正常')
-      else message.error(res.message || '连通失败')
+      if (res.ok) {
+        message.success(res.message || '连通正常')
+        return
+      }
+      const tip = res.message || '连通失败'
+      const detail = (res.detail || '').trim()
+      message.error(detail && detail !== tip ? `${tip}（${detail.slice(0, 160)}）` : tip, 6)
     },
     onError: () => message.error('测试请求失败'),
   })

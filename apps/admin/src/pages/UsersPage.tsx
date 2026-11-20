@@ -254,8 +254,22 @@ export default function UsersPage({ mode }: { mode: 'clients' | 'admins' }) {
             mode === 'admins' ? createAdmin.mutate(v) : createClient.mutate(v)
           }
         >
-          <Form.Item name="email" label="账号" rules={[{ required: true, message: '请输入账号' }]}>
-            <Input autoComplete="off" placeholder="请输入账号" />
+          <Form.Item
+            name="email"
+            label={mode === 'admins' ? '账号' : '邮箱'}
+            rules={
+              mode === 'admins'
+                ? [{ required: true, message: '请输入账号' }]
+                : [
+                    { required: true, message: '请输入邮箱' },
+                    { type: 'email', message: '请输入有效邮箱' },
+                  ]
+            }
+          >
+            <Input
+              autoComplete="off"
+              placeholder={mode === 'admins' ? '请输入账号' : '请输入邮箱'}
+            />
           </Form.Item>
           <Form.Item
             name="password"

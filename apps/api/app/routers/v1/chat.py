@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.deps import get_current_user, get_db, get_request_id
 from app.retriever_dep import get_retriever
 from lawbot.agent.graph import run_agent_stream
+from lawbot.agent.preferences import extract_province, load_user_preference, upsert_user_preference
 from lawbot.db.models import Conversation, Message, User
 from lawbot.db.session import get_sessionmaker
 from lawbot.domain.schemas import ChatEvent, ChatRequest, MessageRole
@@ -48,6 +49,14 @@ def chat(
     conversation_id = conv.id
     settings = get_settings()
     database_url = settings.database_url
+    province = extract_province(body.content)
+    pref = load_user_preference(db, user.id)
+    if province or (pref and pref.case_domain):
+        # case_domain filled after the turn from final_state; province updated immediately
+        if province:
+            upsert_user_preference(db, user_id=user.id, province=province)
+            pref = load_user_preference(db, user.id)
+    province_hint = province or (pref.province if pref else None)
     credentials = resolve_provider_credentials(
         db,
         encryption_key=settings.encryption_key or None,
@@ -67,6 +76,12 @@ def chat(
             retriever=retriever,
             credentials=credentials,
             top_k=settings.retriever_top_k,
+            history=None,
+            max_followups=settings.agent_max_followups,
+            min_retrieve_score=settings.retrieve_min_score,
+            conversation_id=str(conversation_id),
+            database_url=database_url,
+            province_hint=province_hint,
         ):
             if isinstance(item, ChatEvent):
                 if item.type == "token":
@@ -86,6 +101,14 @@ def chat(
         factory = get_sessionmaker(database_url)
         session = factory()
         try:
+            domain = final_state.get("case_type")
+            if domain and domain != "general":
+                upsert_user_preference(
+                    session,
+                    user_id=user.id,
+                    case_domain=str(domain),
+                    province=province or None,
+                )
             assistant = Message(
                 conversation_id=conversation_id,
                 role=MessageRole.ASSISTANT,

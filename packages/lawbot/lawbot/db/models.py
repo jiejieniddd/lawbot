@@ -39,6 +39,24 @@ class User(Base):
     user_roles: Mapped[list[UserRoleAssignment]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    preference: Mapped[UserPreference | None] = relationship(
+        back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class UserPreference(Base):
+    __tablename__ = "user_preferences"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    province: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    case_domain: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped[User] = relationship(back_populates="preference")
 
 
 class Permission(Base):
@@ -184,6 +202,46 @@ class LLMProvider(Base):
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AuthChallenge(Base):
+    """Ephemeral auth challenges (password reset codes, login fail lockout)."""
+
+    __tablename__ = "auth_challenges"
+    __table_args__ = (
+        Index("ix_auth_challenges_purpose_subject_created", "purpose", "subject", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    code_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MailSettings(Base):
+    """Singleton SMTP / password-reset config. Row id is always 1."""
+
+    __tablename__ = "mail_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    smtp_host: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    smtp_port: Mapped[int] = mapped_column(Integer, nullable=False, default=587)
+    smtp_security: Mapped[str] = mapped_column(String(20), nullable=False, default="starttls")
+    smtp_username: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    smtp_password_encrypted: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    from_address: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    from_name: Mapped[str] = mapped_column(String(120), nullable=False, default="LawBot")
+    code_ttl_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    resend_interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

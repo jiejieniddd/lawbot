@@ -24,15 +24,22 @@ docker compose up --build
 
 一次拉起：**postgres、redis、qdrant、api、worker、web、admin**（默认不含 OpenSearch；低配推荐 `RETRIEVER_MODE=memory`）。
 
-| 服务 | URL / 端口 |
-|------|------------|
-| C 端 Web | http://localhost:8080 |
-| Admin | http://localhost:8081 |
+### 本机访问地址（Docker Compose 默认）
+
+浏览器直接打开：
+
+| 用途 | 本机 URL |
+|------|----------|
+| C 端（用户咨询） | http://localhost:8080 |
+| 后台 Admin | http://localhost:8081 |
 | API | http://localhost:8000 |
-| API docs | http://localhost:8000/docs |
-| Qdrant | http://localhost:6333 |
-| OpenSearch | http://localhost:9200（需 `--profile full`） |
-| Worker | 后台轮询导入任务（无对外端口） |
+| API Swagger 文档 | http://localhost:8000/docs |
+| Qdrant Dashboard | http://localhost:6333/dashboard |
+| OpenSearch | http://localhost:9200（需 `docker compose --profile full up`） |
+
+种子超管登录后台：账号 `root`，密码见 `.env` 的 `SEED_ADMIN_PASSWORD`（示例 `Aa@123456`）。
+
+端口由 `.env` 控制（与 `.env.example` 一致）：`WEB_PORT` / `ADMIN_PORT` / `API_PORT` / `POSTGRES_PORT` / `REDIS_PORT`。本机已被占用时改这些变量即可，例如 `API_PORT=8001`、`ADMIN_PORT=8083`，访问地址跟着改成 `http://localhost:<端口>`。
 
 `api` 等待 postgres / redis healthy 与 qdrant started；`web`/`admin` 等待 `api` healthy。前端经 nginx 反代 `/api`。
 
@@ -146,6 +153,15 @@ curl -s -X POST http://localhost:8000/api/admin/knowledge-import-jobs \
 
 ## 本地开发（分端）
 
+分端 `npm run dev` / `uvicorn` 时的本机地址：
+
+| 用途 | 本机 URL |
+|------|----------|
+| C 端 Vite | http://localhost:5173 |
+| Admin Vite | http://localhost:5174 |
+| API | http://localhost:8000 |
+| API docs | http://localhost:8000/docs |
+
 ### 1) API
 
 需要：Python 3.12+、[uv](https://docs.astral.sh/uv/)、PostgreSQL、Redis（可用 `docker compose up postgres redis`）。
@@ -167,7 +183,7 @@ uv run pytest apps/api/tests -q
 ```bash
 cd apps/web
 cp .env.example .env   # VITE_API_BASE_URL 本地可留空
-npm install && npm run dev   # :5173，代理 /api → :8000
+npm install && npm run dev   # http://localhost:5173 ，代理 /api → :8000
 ```
 
 ### 3) Admin
@@ -175,7 +191,7 @@ npm install && npm run dev   # :5173，代理 /api → :8000
 ```bash
 cd apps/admin
 cp .env.example .env
-npm install && npm run dev   # :5174
+npm install && npm run dev   # http://localhost:5174
 ```
 
 ## curl：SSE 与 403
@@ -239,9 +255,13 @@ GitHub Actions：`.github/workflows/ci.yml`（`uv run pytest`）。前端 typech
 - 不含地方法规；全量约 70 万条勿在低配机跑；小样本用 `IMPORT_MAX_ROWS=100–200`
 - SSE 无断线续传；未上 K8s
 
+## Eval
+
+`python eval/run_eval.py`（金标 15 条，报告写入 `eval/last_report.json`）。
+
 ## 后续可选
 
-地方法规入库、全量导入运维、`eval/` 金标扩充、SSE 重连、律师审核工单。
+地方法规入库、全量导入运维、SSE 重连、律师审核工单。
 
 ---
 

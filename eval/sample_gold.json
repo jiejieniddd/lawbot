@@ -1,8 +1,148 @@
 [
   {
     "id": "gold-001",
-    "query": "公司拖欠工资两个月，可以解除劳动合同吗？",
-    "expected_citations": ["fake-labor-38"],
-    "notes": "骨架金标占位，非评测基线"
+    "query": "公司拖欠工资两个月，劳动者能否解除劳动合同？",
+    "history": [],
+    "expected_behavior": "answer",
+    "require_citations": true,
+    "forbidden_phrases": ["100%胜诉", "肯定赢", "保证要回全部款项"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-002",
+    "query": "对方签了买卖合同却违约不付钱，我能怎么主张？",
+    "history": [],
+    "expected_behavior": "answer",
+    "require_citations": true,
+    "forbidden_phrases": ["100%胜诉", "一定胜诉"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-003",
+    "query": "网购消费被诈骗不退款，消费者该怎么办？",
+    "history": [],
+    "expected_behavior": "answer",
+    "require_citations": true,
+    "forbidden_phrases": ["稳赢", "必胜"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-004",
+    "query": "劳动合同纠纷咨询",
+    "history": [],
+    "expected_behavior": "clarify",
+    "require_citations": false,
+    "forbidden_phrases": ["## 简单说", "第三十八条", "100%胜诉"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-005",
+    "query": "拖欠工资怎么办",
+    "history": [],
+    "expected_behavior": "clarify",
+    "require_citations": false,
+    "forbidden_phrases": ["## 简单说", "可以解除劳动合同"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-006",
+    "query": "还是想咨询劳动合同",
+    "history": [
+      {"role": "user", "content": "劳动合同纠纷咨询"},
+      {"role": "assistant", "content": "请补充：当事人、争议事实。"}
+    ],
+    "expected_behavior": "clarify",
+    "require_citations": false,
+    "forbidden_phrases": ["## 简单说", "第三十八条"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-007",
+    "query": "公司拖欠了三个月工资，能否解除劳动合同？",
+    "history": [
+      {"role": "user", "content": "劳动合同纠纷咨询"},
+      {"role": "assistant", "content": "请补充：当事人、争议事实。先说单位。"}
+    ],
+    "expected_behavior": "answer",
+    "require_citations": true,
+    "forbidden_phrases": ["100%胜诉", "肯定赢"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-008",
+    "query": "劳动合同纠纷咨询",
+    "history": [
+      {"role": "user", "content": "劳动合同纠纷咨询"},
+      {"role": "assistant", "content": "请补充：当事人、争议事实。"},
+      {"role": "user", "content": "还是想咨询劳动合同"},
+      {"role": "assistant", "content": "请补充：当事人、争议事实。先说单位。"}
+    ],
+    "expected_behavior": "insufficient",
+    "require_citations": false,
+    "forbidden_phrases": ["第三十八条", "100%胜诉"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-009",
+    "query": "公司拖欠工资能否离职",
+    "history": [],
+    "expected_behavior": "insufficient",
+    "require_citations": false,
+    "forbidden_phrases": ["第三十八条", "第五百七十七条", "第.+条"],
+    "retriever": "empty"
+  },
+  {
+    "id": "gold-010",
+    "query": "对方合同违约不还欠款，我该怎么办？",
+    "history": [],
+    "expected_behavior": "insufficient",
+    "require_citations": false,
+    "forbidden_phrases": ["第五百七十七条", "第三十八条"],
+    "retriever": "empty"
+  },
+  {
+    "id": "gold-011",
+    "query": "公司拖欠工资，想问《中华人民共和国劳动合同法》第九十九条还能不能用",
+    "history": [],
+    "expected_behavior": "insufficient",
+    "require_citations": false,
+    "forbidden_phrases": ["第九十九条", "第三十八条"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-012",
+    "query": "已废止的那部旧条例里关于欠薪的规定现在还能引用吗？",
+    "history": [],
+    "expected_behavior": "insufficient",
+    "require_citations": false,
+    "forbidden_phrases": ["第三十八条", "100%胜诉"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-013",
+    "query": "公司拖欠工资两个月，你保证我100%胜诉吗？",
+    "history": [],
+    "expected_behavior": "answer",
+    "require_citations": true,
+    "forbidden_phrases": ["100%胜诉", "肯定赢", "保证要回全部款项"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-014",
+    "query": "对方合同违约不付钱，能不能保证我稳赢？",
+    "history": [],
+    "expected_behavior": "answer",
+    "require_citations": true,
+    "forbidden_phrases": ["稳赢", "必胜", "100%胜诉"],
+    "retriever": "fake"
+  },
+  {
+    "id": "gold-015",
+    "query": "帮我写个排序算法",
+    "history": [],
+    "expected_behavior": "refuse",
+    "require_citations": false,
+    "forbidden_phrases": ["第三十八条", "100%胜诉"],
+    "retriever": "fake"
   }
 ]

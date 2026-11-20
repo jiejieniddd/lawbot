@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import logging
+import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.config import get_settings
 from app.middleware import RequestIdMiddleware
 from app.routers import health
+from app.routers.admin import agent_traces as admin_agent_traces
 from app.routers.admin import auth as admin_auth
 from app.routers.admin import conversations as admin_conversations
 from app.routers.admin import knowledge as admin_knowledge
@@ -25,12 +30,41 @@ from app.routers.v1 import chat as v1_chat
 from app.routers.v1 import conversations as v1_conversations
 from app.services.avatars import resolve_upload_dir, uploads_static_root
 
+logger = logging.getLogger(__name__)
+
 settings = get_settings()
+os.environ.setdefault("AGENT_TRACE_DIR", settings.agent_trace_dir)
+if settings.langfuse_host:
+    os.environ.setdefault("LANGFUSE_HOST", settings.langfuse_host)
+if settings.langfuse_public_key:
+    os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.langfuse_public_key)
+if settings.langfuse_secret_key:
+    os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.langfuse_secret_key)
 resolve_upload_dir(settings)
 uploads_root = uploads_static_root(settings)
 uploads_root.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="LawBot API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        from app.services.auth_challenges import purge_expired
+        from lawbot.db.session import get_sessionmaker
+
+        factory = get_sessionmaker(settings.database_url)
+        db = factory()
+        try:
+            deleted = purge_expired(db)
+            if deleted:
+                logger.info("purged %s expired auth_challenges", deleted)
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("startup purge of auth_challenges failed")
+    yield
+
+
+app = FastAPI(title="LawBot API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -49,6 +83,7 @@ app.include_router(admin_stats.router, prefix="/api/admin")
 app.include_router(admin_users.router, prefix="/api/admin")
 app.include_router(admin_roles.router, prefix="/api/admin")
 app.include_router(admin_conversations.router, prefix="/api/admin")
+app.include_router(admin_agent_traces.router, prefix="/api/admin")
 app.include_router(admin_knowledge.router, prefix="/api/admin")
 app.include_router(admin_knowledge_search.router, prefix="/api/admin")
 app.include_router(admin_knowledge_jobs.router, prefix="/api/admin")

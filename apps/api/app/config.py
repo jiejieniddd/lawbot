@@ -1,13 +1,25 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# apps/api/app/config.py -> repo root (LawBot/)
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_ENV_FILES = (
+    str(_REPO_ROOT / ".env"),
+    ".env",  # cwd override (e.g. apps/api/.env) wins if present
+)
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=_ENV_FILES,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     app_env: str = "dev"
     secret_key: str = Field(
@@ -40,6 +52,26 @@ class Settings(BaseSettings):
     # RAG / import
     retriever_mode: str = Field(default="memory", validation_alias=AliasChoices("RETRIEVER_MODE"))
     retriever_top_k: int = Field(default=5, validation_alias=AliasChoices("RETRIEVER_TOP_K"))
+    retrieve_min_score: float = Field(
+        default=0.6, validation_alias=AliasChoices("RETRIEVE_MIN_SCORE", "retrieve_min_score")
+    )
+    agent_max_followups: int = Field(
+        default=2, validation_alias=AliasChoices("AGENT_MAX_FOLLOWUPS", "agent_max_followups")
+    )
+    agent_history_rounds: int = Field(
+        default=6, validation_alias=AliasChoices("AGENT_HISTORY_ROUNDS", "agent_history_rounds")
+    )
+    agent_trace_dir: str = Field(
+        default="data/agent_traces",
+        validation_alias=AliasChoices("AGENT_TRACE_DIR", "agent_trace_dir"),
+    )
+    langfuse_host: str = Field(default="", validation_alias=AliasChoices("LANGFUSE_HOST", "langfuse_host"))
+    langfuse_public_key: str = Field(
+        default="", validation_alias=AliasChoices("LANGFUSE_PUBLIC_KEY", "langfuse_public_key")
+    )
+    langfuse_secret_key: str = Field(
+        default="", validation_alias=AliasChoices("LANGFUSE_SECRET_KEY", "langfuse_secret_key")
+    )
     rrf_k: int = Field(default=60, validation_alias=AliasChoices("RRF_K"))
     rag_memory_dir: str = Field(
         default="data/rag_memory", validation_alias=AliasChoices("RAG_MEMORY_DIR")
@@ -68,6 +100,29 @@ class Settings(BaseSettings):
 
     upload_dir: str = Field(default="data/uploads/avatars", validation_alias=AliasChoices("UPLOAD_DIR"))
     avatar_max_bytes: int = Field(default=2_097_152, validation_alias=AliasChoices("AVATAR_MAX_BYTES"))
+
+    # Mail / password reset. Used only when mail_settings has no saved row.
+    mail_enabled: bool = Field(default=False, validation_alias=AliasChoices("MAIL_ENABLED", "mail_enabled"))
+    smtp_host: str = Field(default="", validation_alias=AliasChoices("SMTP_HOST", "smtp_host"))
+    smtp_port: int = Field(default=587, validation_alias=AliasChoices("SMTP_PORT", "smtp_port"))
+    smtp_security: str = Field(
+        default="starttls", validation_alias=AliasChoices("SMTP_SECURITY", "smtp_security")
+    )
+    smtp_username: str = Field(default="", validation_alias=AliasChoices("SMTP_USERNAME", "smtp_username"))
+    smtp_password: str = Field(default="", validation_alias=AliasChoices("SMTP_PASSWORD", "smtp_password"))
+    smtp_from_address: str = Field(
+        default="", validation_alias=AliasChoices("SMTP_FROM_ADDRESS", "smtp_from_address")
+    )
+    smtp_from_name: str = Field(
+        default="LawBot", validation_alias=AliasChoices("SMTP_FROM_NAME", "smtp_from_name")
+    )
+    password_reset_ttl_minutes: int = Field(
+        default=10, validation_alias=AliasChoices("PASSWORD_RESET_TTL_MINUTES", "password_reset_ttl_minutes")
+    )
+    password_reset_resend_seconds: int = Field(
+        default=60,
+        validation_alias=AliasChoices("PASSWORD_RESET_RESEND_SECONDS", "password_reset_resend_seconds"),
+    )
 
     @property
     def cors_origin_list(self) -> list[str]:

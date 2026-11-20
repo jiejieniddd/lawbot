@@ -53,6 +53,41 @@ def resolve_provider_credentials(
     )
 
 
+@dataclass
+class EmbeddingCredentials:
+    api_key: str
+    api_base: str | None
+    source: str  # env | llm_provider
+
+
+def resolve_embedding_credentials(
+    db: Session | None = None,
+    *,
+    embedding_api_key: str = "",
+    embedding_api_base: str | None = None,
+    encryption_key: str | None = None,
+    jwt_secret: str | None = None,
+) -> EmbeddingCredentials | None:
+    """Prefer EMBEDDING_API_KEY; else reuse enabled Admin llm_providers key/base_url."""
+    key = (embedding_api_key or "").strip()
+    base = (embedding_api_base or None) or None
+    if key:
+        return EmbeddingCredentials(api_key=key, api_base=base, source="env")
+
+    if db is None:
+        return None
+    creds = resolve_provider_credentials(
+        db, encryption_key=encryption_key, jwt_secret=jwt_secret
+    )
+    if creds is None:
+        return None
+    return EmbeddingCredentials(
+        api_key=creds.api_key,
+        api_base=base or creds.base_url,
+        source="llm_provider",
+    )
+
+
 def _litellm_model_name(provider: str, model: str) -> str:
     if "/" in model:
         return model
@@ -162,17 +197,91 @@ def complete_text_stream(
         return
 
 
+def humanize_connectivity_error(exc: BaseException) -> str:
+    """Map LiteLLM / upstream errors to short Chinese messages for Admin UI."""
+    raw = (str(exc) or "").strip() or type(exc).__name__
+    text = f"{type(exc).__name__}: {raw}".lower()
+
+    rules: list[tuple[tuple[str, ...], str]] = [
+        (("litellm not installed",), "服务端未安装 litellm，无法测试连通"),
+        (
+            (
+                "authentication",
+                "unauthorized",
+                "invalid api key",
+                "incorrect api key",
+                "invalid_api_key",
+                "api key",
+                "401",
+            ),
+            "API Key 无效或无权限，请检查密钥",
+        ),
+        (
+            ("permission", "forbidden", "403"),
+            "无访问权限，请检查账号或密钥权限",
+        ),
+        (
+            ("rate limit", "ratelimit", "too many requests", "429"),
+            "请求过于频繁，请稍后重试",
+        ),
+        (
+            ("timeout", "timed out", "deadline exceeded"),
+            "连接超时，请检查网络或 Base URL",
+        ),
+        (
+            (
+                "connection",
+                "connecterror",
+                "connect error",
+                "name or service not known",
+                "nodename nor servname",
+                "getaddrinfo",
+                "network is unreachable",
+                "connection refused",
+            ),
+            "无法连接上游，请检查 Base URL 与网络",
+        ),
+        (
+            ("ssl", "certificate", "cert verify"),
+            "SSL/证书校验失败，请检查 Base URL 或证书配置",
+        ),
+        (
+            (
+                "model_not_found",
+                "does not exist",
+                "invalid model",
+                "unknown model",
+                "not a valid model",
+            ),
+            "模型不可用或不存在，请检查默认模型名称",
+        ),
+        (
+            ("billing", "insufficient", "quota", "balance", "payment"),
+            "上游额度不足或账户异常，请检查计费状态",
+        ),
+    ]
+    for needles, zh in rules:
+        if any(n in text for n in needles):
+            return zh
+
+    clipped = raw.replace("\n", " ")
+    if len(clipped) > 120:
+        clipped = clipped[:117] + "..."
+    return f"连通失败：{clipped}"
+
+
 def test_provider_connectivity(
     *,
     provider_kind: str,
     model: str,
     api_key: str,
     base_url: str | None,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, str | None]:
+    """Return (ok, message_zh, detail_raw). detail is set only on failure."""
     try:
         import litellm
     except ImportError:
-        return False, "litellm not installed"
+        return False, "服务端未安装 litellm，无法测试连通", "litellm not installed"
 
     litellm_model = _litellm_model_name(provider_kind, model)
     kwargs: dict = {
@@ -185,6 +294,7 @@ def test_provider_connectivity(
         kwargs["api_base"] = base_url
     try:
         litellm.completion(**kwargs)
-        return True, "ok"
+        return True, "连通正常", None
     except Exception as exc:
-        return False, str(exc)
+        detail = str(exc).strip() or type(exc).__name__
+        return False, humanize_connectivity_error(exc), detail

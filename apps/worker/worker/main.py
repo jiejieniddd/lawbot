@@ -55,6 +55,11 @@ def finish_job(database_url: str, job_id, *, status: str, stats: dict | None = N
 
 
 def process_job(job: KnowledgeImportJob) -> None:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from lawbot.llm.client import resolve_embedding_credentials
+
     settings = get_worker_settings()
     cfg = job.config or {}
     max_rows = int(cfg.get("max_rows", settings.import_max_rows))
@@ -63,12 +68,38 @@ def process_job(job: KnowledgeImportJob) -> None:
     subset = str(cfg.get("subset", "articles"))
     index_backend = str(cfg.get("index_backend", settings.index_backend)).lower()
     memory_dir = str(cfg.get("memory_dir", settings.rag_memory_dir))
+
+    embedding_api_key = settings.embedding_api_key
+    embedding_api_base = settings.embedding_api_base
+    engine = create_engine(settings.database_url)
+    db = Session(engine)
+    try:
+        emb = resolve_embedding_credentials(
+            db,
+            embedding_api_key=embedding_api_key,
+            embedding_api_base=embedding_api_base,
+            encryption_key=settings.encryption_key or None,
+            jwt_secret=settings.jwt_secret,
+        )
+        if emb is not None:
+            embedding_api_key = emb.api_key
+            embedding_api_base = emb.api_base
+            logger.info("embedding credentials source=%s", emb.source)
+        elif settings.embedding_mode == "litellm":
+            raise RuntimeError(
+                "EMBEDDING_MODE=litellm but no EMBEDDING_API_KEY and no enabled llm_providers"
+            )
+    finally:
+        db.close()
+        engine.dispose()
+
     logger.info(
-        "processing job=%s max_rows=%s dataset=%s backend=%s",
+        "processing job=%s max_rows=%s dataset=%s backend=%s embedding_mode=%s",
         job.id,
         max_rows,
         dataset_id,
         index_backend,
+        settings.embedding_mode,
     )
     try:
         stats = run_import(
@@ -80,8 +111,8 @@ def process_job(job: KnowledgeImportJob) -> None:
             collection=settings.qdrant_collection,
             index=settings.opensearch_index,
             embedding_model=settings.embedding_model,
-            embedding_api_key=settings.embedding_api_key,
-            embedding_api_base=settings.embedding_api_base,
+            embedding_api_key=embedding_api_key,
+            embedding_api_base=embedding_api_base,
             embedding_dim=settings.embedding_dim,
             embedding_mode=settings.embedding_mode,
             recreate=recreate,

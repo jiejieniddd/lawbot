@@ -12,13 +12,21 @@ const loading = ref(false)
 const auth = useAuthStore()
 const router = useRouter()
 
+function isEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+}
+
 async function onSubmit() {
+  if (!isEmail(account.value)) {
+    ElMessage.error('请输入有效邮箱')
+    return
+  }
   loading.value = true
   try {
     await auth.register(account.value, password.value, displayName.value || undefined)
     router.push('/chat')
   } catch (e) {
-    ElMessage.error((e as Error).message)
+    ElMessage.error((e as Error).message || '账号或密码错误')
   } finally {
     loading.value = false
   }
@@ -40,13 +48,13 @@ async function onSubmit() {
           <el-form-item label="昵称">
             <el-input v-model="displayName" size="large" placeholder="可选" />
           </el-form-item>
-          <el-form-item label="账号">
+          <el-form-item label="邮箱">
             <el-input
               v-model="account"
-              type="text"
-              autocomplete="username"
+              type="email"
+              autocomplete="email"
               size="large"
-              placeholder="请输入账号"
+              placeholder="请输入邮箱"
             />
           </el-form-item>
           <el-form-item label="密码">

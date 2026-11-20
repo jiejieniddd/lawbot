@@ -165,3 +165,58 @@ def build_intent_classify_user_prompt(*, query: str) -> str:
 
 def build_rewrite_user_prompt(*, query: str) -> str:
     return f"用户消息：{query}\n请输出 JSON。"
+
+
+FOLLOWUP_SYSTEM_PROMPT = """你是 LawBot。用户要咨询法律问题，但关键事实还不够，现在只能追问。
+
+规则：
+- 只追问给定的缺失项，一次只问最关键的一项，用口语。
+- 回复中必须原样保留给出的「请补充：…」这一句。
+- 不要检索、不要下确定性结论，不要使用「## 简单说」或法律意见模板。
+- 禁止出现任何法条编号（包括「第…条」）。
+"""
+
+STAGED_SYSTEM_PROMPT = """你是 LawBot。关键事实仍不足，且追问已到上限。
+
+规则：
+- 只说明信息不足，并点名需要补充的事实。
+- 不要下确定性结论，不要使用「## 简单说」。
+- 禁止出现任何法条编号（包括「第…条」）。
+"""
+
+NO_BASIS_SYSTEM_PROMPT = """你是 LawBot。已经检索，但没有达到可用的法律依据。
+
+规则：
+- 必须说明「未检索到明确依据」，检索结果视为（无）。
+- 可以给一句合法的处理方向，例如报警、固定证据、依法请求赔偿。
+- 禁止编造或写出任何法条编号（包括「第…条」「第三十八条」）。
+- 不要把未检索到的条文说成已经查到。
+"""
+
+
+def build_followup_user_prompt(*, dialogue: str, missing: str) -> str:
+    return (
+        f"对话：\n{dialogue}\n"
+        f"缺失项：{missing}\n"
+        f"请把缺失项说成人话，并且必须包含这一句：请补充：{missing}。"
+        "禁止法条编号，禁止确定性结论。"
+    )
+
+
+def build_staged_user_prompt(*, dialogue: str, missing: str) -> str:
+    return (
+        f"对话：\n{dialogue}\n"
+        f"仍缺：{missing}\n"
+        f"请回复：信息不足，建议补充{missing}。"
+        "不要编造法条，不要下确定性结论。"
+    )
+
+
+def build_no_basis_user_prompt(*, dialogue: str) -> str:
+    return (
+        f"对话：\n{dialogue}\n"
+        "检索结果：（无）\n"
+        "未检索到明确依据。请说明不能引用具体法条，"
+        "并给一句合法的处理方向（可提及报警、固定证据、赔偿）。"
+        "禁止出现「第…条」或任何法条编号。"
+    )

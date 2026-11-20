@@ -137,6 +137,9 @@ services:
       EMBEDDING_DIM: ${EMBEDDING_DIM:-384}
       HF_DATASET_ID: ${HF_DATASET_ID:-senry5433/china-effective-laws-regulations}
       WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
+      JWT_SECRET: ${JWT_SECRET:-compose-dev-secret-change-me}
+      SECRET_KEY: ${JWT_SECRET:-compose-dev-secret-change-me}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
     volumes:
       - ./data/rag_memory:/workspace/data/rag_memory
     depends_on:

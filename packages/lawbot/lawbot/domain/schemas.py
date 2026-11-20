@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from lawbot.accounts import normalize_account, validate_new_account
+from lawbot.accounts import normalize_account, validate_email_account, validate_new_account
 
 
 class UserRole(StrEnum):
@@ -63,9 +63,17 @@ class Citation(BaseModel):
     text: str
     source_id: str
     effective_date: str | None = None
+    status: str | None = None
     category: str | None = None
     jurisdiction: str | None = None
     source_url: str | None = None
+
+
+LEGAL_DISCLAIMER = (
+    "本回复仅供参考，不构成正式法律意见。如需正式意见请咨询执业律师。"
+    "检索所依据的法规条文来自第三方整理的数据集，非国家官方汇编、非权威发布渠道，"
+    "请以全国人大等官方来源为准。"
+)
 
 
 class LLMProviderKind(StrEnum):
@@ -157,11 +165,7 @@ class ChatEvent(BaseModel):
         request_id: str,
         message_id: UUID,
         conversation_id: UUID,
-        disclaimer: str = (
-            "本回复仅供参考，不构成正式法律意见。如需正式意见请咨询执业律师。"
-            "检索所依据的法规条文来自第三方整理的数据集，非国家官方汇编、非权威发布渠道，"
-            "请以全国人大等官方来源为准。"
-        ),
+        disclaimer: str = LEGAL_DISCLAIMER,
     ) -> ChatEvent:
         return cls(
             type="done",
@@ -187,14 +191,14 @@ class TokenPayload(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=32, description="登录账号（非邮箱）")
+    email: str = Field(min_length=3, max_length=255, description="登录邮箱")
     password: str = Field(min_length=6, max_length=128)
     display_name: str | None = Field(default=None, max_length=100)
 
     @field_validator("email")
     @classmethod
     def _validate_account(cls, v: str) -> str:
-        return validate_new_account(v)
+        return validate_email_account(v)
 
 
 class LoginRequest(BaseModel):
@@ -303,7 +307,7 @@ class AdminCreate(BaseModel):
 
 
 class ClientCreate(BaseModel):
-    email: str = Field(min_length=3, max_length=32, description="登录账号（非邮箱）")
+    email: str = Field(min_length=3, max_length=255, description="登录邮箱")
     password: str = Field(min_length=6, max_length=128)
     display_name: str | None = Field(default=None, max_length=100)
     role_id: UUID | None = None
@@ -311,7 +315,7 @@ class ClientCreate(BaseModel):
     @field_validator("email")
     @classmethod
     def _validate_account_client(cls, v: str) -> str:
-        return validate_new_account(v)
+        return validate_email_account(v)
 
 
 class ProfileUpdate(BaseModel):

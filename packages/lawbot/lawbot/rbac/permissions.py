@@ -29,6 +29,7 @@ PERMISSION_DEFS: list[PermissionDef] = [
     {"code": "audit:read", "name": "审计只读", "module": "audit", "description": "查看会话审计"},
     {"code": "stats:read", "name": "统计只读", "module": "stats", "description": "查看仪表盘统计"},
     {"code": "settings:read", "name": "系统设置", "module": "settings", "description": "查看系统设置"},
+    {"code": "settings:write", "name": "修改系统设置", "module": "settings", "description": "修改系统设置"},
 ]
 
 ALL_PERMISSION_CODES: tuple[str, ...] = tuple(p["code"] for p in PERMISSION_DEFS)
@@ -62,7 +63,9 @@ ROLE_DEFS: list[RoleDef] = [
 
 ROLE_PERMISSION_CODES: dict[str, tuple[str, ...]] = {
     "super_admin": ALL_PERMISSION_CODES,
-    "admin": tuple(c for c in ALL_PERMISSION_CODES if c != "role:manage"),
+    "admin": tuple(
+        c for c in ALL_PERMISSION_CODES if c not in {"role:manage", "settings:write"}
+    ),
     "operator": ("stats:read", "audit:read", "knowledge:read"),
     "user": (),
 }

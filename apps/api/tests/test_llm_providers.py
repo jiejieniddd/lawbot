@@ -10,7 +10,7 @@ def _admin_headers(client, admin_user):
 def test_user_forbidden_on_llm_providers(client):
     reg = client.post(
         "/api/v1/auth/register",
-        json={"email": "u_llm01", "password": "secret12"},
+        json={"email": "u_llm01@example.com", "password": "secret12"},
     )
     token = reg.json()["access_token"]
     resp = client.get(
@@ -101,15 +101,26 @@ def test_provider_test_endpoint_ok_and_no_raw_key(client, admin_user, monkeypatc
 
     monkeypatch.setattr(
         "app.routers.admin.llm_providers.test_provider_connectivity",
-        lambda **_kwargs: (True, "mocked connectivity ok"),
+        lambda **_kwargs: (True, "连通正常", None),
     )
     tested = client.post(f"/api/admin/llm-providers/{provider_id}/test", headers=headers)
     assert tested.status_code == 200, tested.text
     body = tested.json()
     assert body["ok"] is True
-    assert "mocked" in body["message"]
+    assert body["message"] == "连通正常"
+    assert body.get("detail") is None
     assert secret not in tested.text
     assert "api_key" not in body
+
+
+def test_humanize_connectivity_error_zh():
+    from lawbot.llm.client import humanize_connectivity_error
+
+    assert "API Key" in humanize_connectivity_error(Exception("AuthenticationError: Invalid API Key"))
+    assert "超时" in humanize_connectivity_error(Exception("Request timed out"))
+    assert "无法连接" in humanize_connectivity_error(Exception("Connection refused"))
+    assert "模型" in humanize_connectivity_error(Exception("model_not_found: demo"))
+    assert humanize_connectivity_error(Exception("weird upstream xyz")).startswith("连通失败：")
 
 
 def test_knowledge_import_job_list(client, admin_user):

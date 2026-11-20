@@ -139,11 +139,11 @@ def test_provider(
             jwt_secret=settings.secret_key,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail="Cannot decrypt api key") from exc
-    ok, message = test_provider_connectivity(
+        raise HTTPException(status_code=400, detail="无法解密 API Key，请检查加密配置") from exc
+    ok, message, detail = test_provider_connectivity(
         provider_kind=row.provider,
         model=row.default_model,
         api_key=api_key,
         base_url=row.base_url,
     )
-    return {"ok": ok, "message": message}
+    return {"ok": ok, "message": message, "detail": detail}

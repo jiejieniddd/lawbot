@@ -37,6 +37,7 @@ class ArticleRecord(BaseModel):
             category=self.category,
             jurisdiction=self.jurisdiction,
             source_url=self.source_url,
+            status=self.status,
         )
 
 

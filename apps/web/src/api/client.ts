@@ -47,19 +47,74 @@ function clearSession() {
   localStorage.removeItem(REFRESH_KEY)
 }
 
+/** Normalize FastAPI `detail` (string | {msg} | validation array) for Error.message. */
+function formatApiDetail(detail: unknown): string {
+  if (detail == null) return ''
+  if (typeof detail === 'string') return detail.trim()
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item
+        if (item && typeof item === 'object' && 'msg' in item) {
+          return String((item as { msg: unknown }).msg)
+        }
+        try {
+          return JSON.stringify(item)
+        } catch {
+          return ''
+        }
+      })
+      .filter(Boolean)
+      .join('; ')
+  }
+  if (typeof detail === 'object' && detail !== null && 'msg' in detail) {
+    return String((detail as { msg: unknown }).msg).trim()
+  }
+  try {
+    return JSON.stringify(detail)
+  } catch {
+    return ''
+  }
+}
+
+function isOnAuthPage(): boolean {
+  const path = window.location.pathname
+  return (
+    path === '/login' ||
+    path === '/register' ||
+    path === '/forgot-password' ||
+    path.startsWith('/login/') ||
+    path.startsWith('/register/') ||
+    path.startsWith('/forgot-password/')
+  )
+}
+
 function handleUnauthorized(): never {
   clearSession()
+  if (isOnAuthPage()) {
+    throw new Error('未登录或登录已过期')
+  }
   const redirect = encodeURIComponent(`${window.location.pathname}${window.location.search}`)
   window.location.assign(`/login?redirect=${redirect}`)
   throw new Error('未登录或登录已过期')
+}
+
+function isForgotPasswordRequest(path: string): boolean {
+  return path.includes('/api/v1/auth/forgot-password/')
 }
 
 function isAuthExempt(path: string): boolean {
   return (
     path.includes('/api/v1/auth/login') ||
     path.includes('/api/v1/auth/register') ||
-    path.includes('/api/v1/auth/refresh')
+    path.includes('/api/v1/auth/refresh') ||
+    isForgotPasswordRequest(path)
   )
+}
+
+async function throwHttpError(res: Response, fallback: string): Promise<never> {
+  const err = (await res.json().catch(() => ({ detail: res.statusText }))) as { detail?: unknown }
+  throw new Error(formatApiDetail(err.detail) || fallback)
 }
 
 function accessExpiresSoon(token: string | null, skewMs = REFRESH_SKEW_MS): boolean {
@@ -141,11 +196,15 @@ export async function api<T>(path: string, options: RequestInit = {}, retried = 
     handleUnauthorized()
   }
   if (res.status === 401) {
+    // Public auth calls surface API detail for ElMessage and must not hard-redirect.
+    if (isAuthExempt(path)) {
+      const fallback = isForgotPasswordRequest(path) ? '请求失败' : '账号或密码错误'
+      await throwHttpError(res, fallback)
+    }
     handleUnauthorized()
   }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || 'Request failed')
+    await throwHttpError(res, 'Request failed')
   }
   if (res.status === 204) return undefined as T
   return res.json()
@@ -185,11 +244,14 @@ export async function streamChat(
     handleUnauthorized()
   }
   if (!res.ok || !res.body) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || 'Chat failed')
+    await throwHttpError(res, 'Chat failed')
+  }
+  const body = res.body
+  if (!body) {
+    throw new Error('Chat failed')
   }
 
-  const reader = res.body.getReader()
+  const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
   while (true) {

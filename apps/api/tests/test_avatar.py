@@ -10,7 +10,7 @@ _PNG = (
 )
 
 
-def _register(client, email: str = "avatar01"):
+def _register(client, email: str = "avatar01@example.com"):
     reg = client.post(
         "/api/v1/auth/register",
         json={"email": email, "password": "secret12", "display_name": "Avatar"},
@@ -40,7 +40,7 @@ def test_upload_avatar_ok(client):
 
 
 def test_upload_avatar_rejects_non_image(client):
-    token = _register(client, "badtype01")
+    token = _register(client, "badtype01@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     files = {"file": ("x.txt", io.BytesIO(b"hello"), "text/plain")}
     resp = client.post("/api/v1/auth/me/avatar", headers=headers, files=files)
@@ -56,7 +56,7 @@ def test_upload_avatar_rejects_too_large(client, monkeypatch):
     settings = get_settings()
     assert settings.avatar_max_bytes == 64
 
-    token = _register(client, "bigfile01")
+    token = _register(client, "bigfile01@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     blob = b"x" * 128
     files = {"file": ("big.png", io.BytesIO(blob), "image/png")}
@@ -74,7 +74,7 @@ def test_upload_avatar_unauthorized(client):
 
 
 def test_delete_avatar(client):
-    token = _register(client, "delavatar01")
+    token = _register(client, "delavatar01@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     files = {"file": ("a.png", io.BytesIO(_PNG), "image/png")}
     up = client.post("/api/v1/auth/me/avatar", headers=headers, files=files)

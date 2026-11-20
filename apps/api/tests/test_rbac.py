@@ -129,7 +129,7 @@ def test_cannot_strip_own_super_admin(client, admin_user, db_session: Session):
 def test_end_user_admin_api_still_403(client, admin_user, db_session: Session):
     reg = client.post(
         "/api/v1/auth/register",
-        json={"email": "cuser99", "password": "secret12"},
+        json={"email": "cuser99@example.com", "password": "secret12"},
     )
     assert reg.status_code == 200
     token = reg.json()["access_token"]

@@ -30,6 +30,11 @@ class WorkerSettings(BaseSettings):
     embedding_api_base: str | None = Field(default=None, validation_alias=AliasChoices("EMBEDDING_API_BASE"))
     embedding_dim: int = Field(default=384, validation_alias=AliasChoices("EMBEDDING_DIM"))
     embedding_mode: str = Field(default="auto", validation_alias=AliasChoices("EMBEDDING_MODE"))
+    encryption_key: str = Field(default="", validation_alias=AliasChoices("ENCRYPTION_KEY", "encryption_key"))
+    jwt_secret: str = Field(
+        default="dev-secret-change-me",
+        validation_alias=AliasChoices("JWT_SECRET", "SECRET_KEY", "secret_key"),
+    )
 
 
 @lru_cache

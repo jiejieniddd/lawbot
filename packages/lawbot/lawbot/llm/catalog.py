@@ -55,6 +55,7 @@ LLM_PROVIDER_CATALOG: list[dict[str, Any]] = [
         "label": "Moonshot (Kimi)",
         "recommended_base_url": "https://api.moonshot.cn/v1",
         "models": _models(
+            ("kimi-k3.1-pro", "kimi-k3.1-pro"),
             ("moonshot-v1-8k", "moonshot-v1-8k"),
             ("moonshot-v1-32k", "moonshot-v1-32k"),
         ),
@@ -64,6 +65,7 @@ LLM_PROVIDER_CATALOG: list[dict[str, Any]] = [
         "label": "OpenAI Compatible",
         "recommended_base_url": None,
         "models": _models(
+            ("kimi-k3.1-pro", "kimi-k3.1-pro"),
             ("gpt-4o-mini", "gpt-4o-mini"),
             ("deepseek-chat", "deepseek-chat"),
         ),

@@ -71,4 +71,5 @@ def citation_from_payload(payload: dict) -> Citation:
         category=payload.get("category"),
         jurisdiction=payload.get("jurisdiction"),
         source_url=payload.get("source_url"),
+        status=payload.get("status"),
     )

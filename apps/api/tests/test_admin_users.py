@@ -25,14 +25,14 @@ def test_list_users_filtered_by_role(client, admin_user):
     headers = _root_headers(client, admin_user)
     reg = client.post(
         "/api/v1/auth/register",
-        json={"email": "client1", "password": "secret12"},
+        json={"email": "client1@example.com", "password": "secret12"},
     )
     assert reg.status_code == 200
 
     users = client.get("/api/admin/users", headers=headers, params={"role": "user"})
     assert users.status_code == 200
     assert all(u["role"] == "user" for u in users.json())
-    assert any(u["email"] == "client1" for u in users.json())
+    assert any(u["email"] == "client1@example.com" for u in users.json())
 
     admins = client.get("/api/admin/users", headers=headers, params={"role": "admin"})
     assert admins.status_code == 200
@@ -79,7 +79,7 @@ def test_create_client_by_admin_and_root(client, admin_user, normal_admin):
     created = client.post(
         "/api/admin/users/clients",
         headers=ops,
-        json={"email": "newuser01", "password": "secret12", "display_name": "NU"},
+        json={"email": "newuser01@example.com", "password": "secret12", "display_name": "NU"},
     )
     assert created.status_code == 201, created.text
     assert created.json()["role"] == "user"
@@ -87,19 +87,19 @@ def test_create_client_by_admin_and_root(client, admin_user, normal_admin):
     dup = client.post(
         "/api/admin/users/clients",
         headers=ops,
-        json={"email": "newuser01", "password": "secret12"},
+        json={"email": "newuser01@example.com", "password": "secret12"},
     )
     assert dup.status_code == 400
 
     # C-end login ok; admin login rejected
     user_login = client.post(
         "/api/v1/auth/login",
-        json={"email": "newuser01", "password": "secret12"},
+        json={"email": "newuser01@example.com", "password": "secret12"},
     )
     assert user_login.status_code == 200
     admin_login = client.post(
         "/api/admin/auth/login",
-        json={"email": "newuser01", "password": "secret12"},
+        json={"email": "newuser01@example.com", "password": "secret12"},
     )
     assert admin_login.status_code == 403
 
@@ -107,10 +107,10 @@ def test_create_client_by_admin_and_root(client, admin_user, normal_admin):
     created2 = client.post(
         "/api/admin/users/clients",
         headers=root,
-        json={"email": "fromroot", "password": "secret12"},
+        json={"email": "fromroot@example.com", "password": "secret12"},
     )
     assert created2.status_code == 201
-    assert created2.json()["display_name"] == "fromroot"
+    assert created2.json()["display_name"] == "fromroot@example.com"
 
 
 def test_cannot_disable_root(client, admin_user):
@@ -159,7 +159,7 @@ def test_normal_admin_can_disable_end_user(client, normal_admin):
     created = client.post(
         "/api/admin/users/clients",
         headers=ops,
-        json={"email": "disable_me", "password": "secret12"},
+        json={"email": "disable_me@example.com", "password": "secret12"},
     )
     assert created.status_code == 201
     target_id = created.json()["id"]
@@ -202,7 +202,7 @@ def test_stats_split_counts(client, admin_user):
     headers = _root_headers(client, admin_user)
     client.post(
         "/api/v1/auth/register",
-        json={"email": "stat_user", "password": "secret12"},
+        json={"email": "stat_user@example.com", "password": "secret12"},
     )
     overview = client.get("/api/admin/stats/overview", headers=headers)
     assert overview.status_code == 200

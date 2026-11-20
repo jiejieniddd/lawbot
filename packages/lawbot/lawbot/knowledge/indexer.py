@@ -38,7 +38,7 @@ def run_import(
     embedding_dim: int = 384,
     embedding_mode: str = "auto",
     recreate: bool = False,
-    batch_size: int = 64,
+    batch_size: int = 10,
     rows: list[dict[str, Any]] | None = None,
     memory_vector: InMemoryVectorStore | None = None,
     memory_bm25: InMemoryBM25Store | None = None,

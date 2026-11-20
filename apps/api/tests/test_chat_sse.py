@@ -1,7 +1,7 @@
 def test_chat_sse_flow(client):
     reg = client.post(
         "/api/v1/auth/register",
-        json={"email": "chat01", "password": "secret12"},
+        json={"email": "chat01@example.com", "password": "secret12"},
     )
     token = reg.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}

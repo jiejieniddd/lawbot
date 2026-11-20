@@ -52,13 +52,21 @@ def embed_texts(
         logger.warning("litellm missing; fake embeddings")
         return [fake_embed(t, dim=dim) for t in texts]
 
-    kwargs: dict = {"model": model, "input": texts, "api_key": api_key}
-    if api_base:
-        kwargs["api_base"] = api_base
+    # DashScope compatible embeddings reject batches larger than 10.
+    batch_limit = 10
+    out: list[list[float]] = []
     try:
-        resp = litellm.embedding(**kwargs)
-        vectors = [item["embedding"] for item in resp.data]
-        return vectors
+        for i in range(0, len(texts), batch_limit):
+            chunk = texts[i : i + batch_limit]
+            kwargs: dict = {"model": model, "input": chunk, "api_key": api_key}
+            if api_base:
+                kwargs["api_base"] = api_base
+            resp = litellm.embedding(**kwargs)
+            out.extend(item["embedding"] for item in resp.data)
+        return out
     except Exception:
+        if mode == "litellm":
+            logger.exception("litellm.embedding failed; not falling back to fake")
+            raise
         logger.exception("litellm.embedding failed; fake embeddings")
         return [fake_embed(t, dim=dim) for t in texts]
