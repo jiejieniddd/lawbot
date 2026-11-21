@@ -126,13 +126,11 @@ def test_cannot_strip_own_super_admin(client, admin_user, db_session: Session):
     assert "超级管理员" in resp.json()["detail"]
 
 
-def test_end_user_admin_api_still_403(client, admin_user, db_session: Session):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "cuser99@example.com", "password": "secret12"},
-    )
-    assert reg.status_code == 200
-    token = reg.json()["access_token"]
+def test_end_user_admin_api_still_403(client, admin_user, db_session: Session, otp_mail):
+    from otp_helpers import register_user
+
+    reg = register_user(client, otp_mail, "cuser99@example.com")
+    token = reg["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     assert client.get("/api/admin/auth/me", headers=headers).status_code == 403
     assert client.get("/api/admin/roles", headers=headers).status_code == 403

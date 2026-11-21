@@ -7,7 +7,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-ARTICLE_RE = re.compile(r"《([^》]{1,80})》(第[0-9零一二三四五六七八九十百千]{1,16}条)")
+# Narrow to statute-style titles so career KB titles are not stripped as false cites.
+ARTICLE_RE = re.compile(
+    r"《([^》]{1,80}(?:法|条例|规定|办法|细则))》(第[0-9零一二三四五六七八九十百千]{1,16}条)"
+)
 OMITTED_NOTE = "部分引用未通过核验，已省略"
 DOUBT_MARK = "引用存疑"
 
@@ -48,6 +51,12 @@ def normalize_article(article: str) -> str:
 def display_ref(law_name: str, article_no: str) -> str:
     law = normalize_law_name(law_name)
     article = (article_no or "").strip()
+    # CareerBot knowledge categories are not statute article numbers.
+    if article in {"interview_qa", "tech_docs", "gotchas", "self_test", "job_skills"} or (
+        article and not article.startswith("第") and "条" not in article
+    ):
+        label = f" / {article}" if article else ""
+        return f"【{law}{label}】"
     if re.fullmatch(r"第.+条", article):
         return f"《{law}》{article}"
     return f"《{law}》第{article}条"

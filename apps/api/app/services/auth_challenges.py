@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 PURPOSE_RESET_PASSWORD = "reset_password"
 PURPOSE_LOGIN_FAIL = "login_fail"
+PURPOSE_REGISTER = "register"
+PURPOSE_LOGIN_EMAIL = "login_email"
+PURPOSE_CHANGE_PASSWORD = "change_password"
 
 DEFAULT_MAX_ATTEMPTS = 5
 LOGIN_FAIL_MAX_ATTEMPTS = 5
@@ -27,17 +30,19 @@ def redis_key(purpose: str, subject: str) -> str:
 
 
 def _now() -> datetime:
+    """Timezone-aware UTC. Required for Postgres timestamptz (naive was treated as local TZ)."""
     return datetime.now(UTC)
 
 
-def _aware(dt: datetime) -> datetime:
+def _as_utc(dt: datetime) -> datetime:
+    """Normalize to aware UTC. Naive values are treated as already-UTC (legacy rows)."""
     if dt.tzinfo is None:
         return dt.replace(tzinfo=UTC)
-    return dt
+    return dt.astimezone(UTC)
 
 
 def _ttl_seconds(expires_at: datetime) -> int:
-    remaining = int((_aware(expires_at) - _now()).total_seconds())
+    remaining = int((_as_utc(expires_at) - _now()).total_seconds())
     return max(1, remaining)
 
 
@@ -62,13 +67,13 @@ class ChallengeView:
             code_hash=row.code_hash,
             attempts=row.attempts,
             max_attempts=row.max_attempts,
-            expires_at=_aware(row.expires_at),
-            used_at=_aware(row.used_at) if row.used_at else None,
-            created_at=_aware(row.created_at),
+            expires_at=_as_utc(row.expires_at),
+            used_at=_as_utc(row.used_at) if row.used_at else None,
+            created_at=_as_utc(row.created_at),
         )
 
     def is_expired(self) -> bool:
-        return _aware(self.expires_at) <= _now()
+        return _as_utc(self.expires_at) <= _now()
 
     def is_usable(self) -> bool:
         return self.used_at is None and not self.is_expired()
@@ -83,9 +88,9 @@ def _serialize(view: ChallengeView) -> str:
             "code_hash": view.code_hash,
             "attempts": view.attempts,
             "max_attempts": view.max_attempts,
-            "expires_at": view.expires_at.isoformat(),
-            "used_at": view.used_at.isoformat() if view.used_at else None,
-            "created_at": view.created_at.isoformat(),
+            "expires_at": _as_utc(view.expires_at).isoformat(),
+            "used_at": _as_utc(view.used_at).isoformat() if view.used_at else None,
+            "created_at": _as_utc(view.created_at).isoformat(),
         },
         separators=(",", ":"),
     )
@@ -102,9 +107,9 @@ def _deserialize(raw: str) -> ChallengeView | None:
             code_hash=data.get("code_hash"),
             attempts=int(data.get("attempts") or 0),
             max_attempts=int(data.get("max_attempts") or DEFAULT_MAX_ATTEMPTS),
-            expires_at=datetime.fromisoformat(data["expires_at"]),
-            used_at=datetime.fromisoformat(used) if used else None,
-            created_at=datetime.fromisoformat(data["created_at"]),
+            expires_at=_as_utc(datetime.fromisoformat(data["expires_at"])),
+            used_at=_as_utc(datetime.fromisoformat(used)) if used else None,
+            created_at=_as_utc(datetime.fromisoformat(data["created_at"])),
         )
     except Exception:
         logger.exception("failed to deserialize auth challenge redis payload")
@@ -197,26 +202,40 @@ def get_active_challenge(db: Session, purpose: str, subject: str) -> ChallengeVi
     cached = _redis_get(purpose, subject)
     if cached is not None:
         row = db.get(AuthChallenge, cached.id)
-        if row is not None and row.used_at is None and _aware(row.expires_at) > _now():
+        if row is not None and row.used_at is None and _as_utc(row.expires_at) > _now():
             return ChallengeView.from_row(row)
         _redis_delete(purpose, subject)
 
+    # Filter expiry in Python: SQLite may round-trip timestamptz as naive and
+    # cannot compare offset-naive vs aware bind params in the ORM evaluator.
     row = db.scalar(
         select(AuthChallenge)
         .where(
             AuthChallenge.purpose == purpose,
             AuthChallenge.subject == subject,
             AuthChallenge.used_at.is_(None),
-            AuthChallenge.expires_at > _now(),
         )
+        .order_by(AuthChallenge.created_at.desc())
+        .limit(1)
+    )
+    if row is None or _as_utc(row.expires_at) <= _now():
+        return None
+    view = ChallengeView.from_row(row)
+    _redis_set(view)
+    return view
+
+
+def get_latest_challenge(db: Session, purpose: str, subject: str) -> ChallengeView | None:
+    """Latest challenge for purpose+subject (may be expired or used)."""
+    row = db.scalar(
+        select(AuthChallenge)
+        .where(AuthChallenge.purpose == purpose, AuthChallenge.subject == subject)
         .order_by(AuthChallenge.created_at.desc())
         .limit(1)
     )
     if row is None:
         return None
-    view = ChallengeView.from_row(row)
-    _redis_set(view)
-    return view
+    return ChallengeView.from_row(row)
 
 
 def register_failed_attempt(db: Session, challenge: ChallengeView) -> ChallengeView:
@@ -245,15 +264,14 @@ def consume_challenge(db: Session, challenge_id: uuid.UUID) -> ChallengeView | N
     """Atomically mark challenge used in Postgres, then delete Redis key."""
     now = _now()
     row = db.get(AuthChallenge, challenge_id)
-    if row is None or row.used_at is not None or _aware(row.expires_at) <= now:
+    if row is None or row.used_at is not None or _as_utc(row.expires_at) <= now:
         return None
-    # Conditional update for concurrency safety
+    # Conditional update for concurrency safety (expiry already checked in Python).
     result = db.execute(
         update(AuthChallenge)
         .where(
             AuthChallenge.id == challenge_id,
             AuthChallenge.used_at.is_(None),
-            AuthChallenge.expires_at > now,
         )
         .values(used_at=now)
     )
@@ -281,19 +299,24 @@ def cooldown_active(db: Session, purpose: str, subject: str, interval_seconds: i
     )
     if row is None:
         return False
-    created = _aware(row.created_at)
+    created = _as_utc(row.created_at)
     return created + timedelta(seconds=interval_seconds) > _now()
 
 
 def purge_expired(db: Session) -> int:
+    """Delete expired / old used challenges. Expiry compared in Python for SQLite safety."""
     now = _now()
     stale_used_before = now - timedelta(days=7)
-    result = db.execute(
-        delete(AuthChallenge).where(
-            (AuthChallenge.expires_at < now)
-            | ((AuthChallenge.used_at.is_not(None)) & (AuthChallenge.created_at < stale_used_before))
-        )
-    )
+    rows = db.scalars(select(AuthChallenge)).all()
+    ids: list[uuid.UUID] = []
+    for row in rows:
+        expired = _as_utc(row.expires_at) < now
+        old_used = row.used_at is not None and _as_utc(row.created_at) < stale_used_before
+        if expired or old_used:
+            ids.append(row.id)
+    if not ids:
+        return 0
+    result = db.execute(delete(AuthChallenge).where(AuthChallenge.id.in_(ids)))
     db.commit()
     return int(result.rowcount or 0)
 

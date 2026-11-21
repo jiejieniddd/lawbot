@@ -10,6 +10,21 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.deps import get_current_user, get_db
 from app.services.avatars import delete_avatar_file, save_avatar
+from app.services.auth_challenges import (
+    PURPOSE_CHANGE_PASSWORD,
+    PURPOSE_LOGIN_EMAIL,
+    PURPOSE_REGISTER,
+    clear_login_failures,
+    is_login_locked,
+    record_login_failure,
+)
+from app.services.email_otp import (
+    OtpError,
+    send_change_password_code,
+    send_login_code,
+    send_register_code,
+    verify_and_consume,
+)
 from app.services.password_reset import (
     RESET_OK_MESSAGE,
     ResetError,
@@ -40,6 +55,9 @@ from lawbot.security import hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["v1-auth"])
 
+LOGIN_FAILED_MESSAGE = "账号或密码错误"
+C_END_EMAIL_REQUIRED_MESSAGE = "请使用邮箱登录，管理员账号请使用后台"
+
 
 class ForgotPasswordSendBody(BaseModel):
     email: str = ""
@@ -51,6 +69,18 @@ class ForgotPasswordResetBody(BaseModel):
     new_password: str = Field(default="")
 
 
+class RegisterSendBody(BaseModel):
+    email: str = ""
+
+
+class LoginSendBody(BaseModel):
+    email: str = ""
+
+
+class PasswordChangeSendBody(BaseModel):
+    old_password: str = Field(default="", min_length=1, max_length=128)
+
+
 def _email_or_400(value: str) -> str:
     try:
         return validate_email_account(value)
@@ -58,7 +88,17 @@ def _email_or_400(value: str) -> str:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-def _raise_reset(exc: ResetError) -> NoReturn:
+def _c_end_email_or_400(value: str) -> str:
+    try:
+        return validate_email_account(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=C_END_EMAIL_REQUIRED_MESSAGE,
+        ) from exc
+
+
+def _raise_otp(exc: OtpError) -> NoReturn:
     raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
@@ -72,7 +112,7 @@ def forgot_password_send(
     try:
         return send_reset_code(db, settings, email)
     except ResetError as exc:
-        _raise_reset(exc)
+        _raise_otp(exc)
 
 
 @router.post("/forgot-password/reset")
@@ -87,8 +127,21 @@ def forgot_password_reset(
     try:
         reset_password(db, settings, email, body.code, body.new_password)
     except ResetError as exc:
-        _raise_reset(exc)
+        _raise_otp(exc)
     return {"detail": RESET_OK_MESSAGE}
+
+
+@router.post("/register/send")
+def register_send(
+    body: RegisterSendBody,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    email = _email_or_400(body.email)
+    try:
+        return send_register_code(db, settings, email)
+    except OtpError as exc:
+        _raise_otp(exc)
 
 
 @router.post("/register", response_model=TokenResponse)
@@ -100,6 +153,10 @@ def register(
     existing = db.scalar(select(User).where(User.email == body.email))
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="账号已注册")
+    try:
+        verify_and_consume(db, settings, PURPOSE_REGISTER, body.email, body.code)
+    except OtpError as exc:
+        _raise_otp(exc)
     user = User(
         email=body.email,
         password_hash=hash_password(body.password),
@@ -115,31 +172,64 @@ def register(
     return issue_token_pair(db, user, settings)
 
 
+@router.post("/login/send")
+def login_send(
+    body: LoginSendBody,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Send login OTP. Requires an existing, enabled account; does not check password."""
+    email = _c_end_email_or_400(body.email)
+    if is_login_locked(db, email):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="登录失败次数过多，请稍后再试",
+        )
+    user = db.scalar(select(User).where(User.email == email))
+    if user is None or user.disabled:
+        record_login_failure(db, email)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LOGIN_FAILED_MESSAGE)
+    try:
+        return send_login_code(db, settings, email)
+    except OtpError as exc:
+        _raise_otp(exc)
+
+
 @router.post("/login", response_model=TokenResponse)
 def login(
     body: LoginRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> TokenResponse:
-    from app.services.auth_challenges import (
-        clear_login_failures,
-        is_login_locked,
-        record_login_failure,
-    )
-
-    subject = body.email
-    if is_login_locked(db, subject):
+    """C-end login: mode=password XOR mode=email_code (never both)."""
+    email = _c_end_email_or_400(body.email)
+    if is_login_locked(db, email):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="登录失败次数过多，请稍后再试",
         )
-    user = db.scalar(select(User).where(User.email == body.email))
-    if user is None or not verify_password(body.password, user.password_hash):
-        record_login_failure(db, subject)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    user = db.scalar(select(User).where(User.email == email))
+    if user is None:
+        record_login_failure(db, email)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LOGIN_FAILED_MESSAGE)
     if user.disabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User disabled")
-    clear_login_failures(db, subject)
+
+    if body.mode == "password":
+        if not verify_password(body.password or "", user.password_hash):
+            record_login_failure(db, email)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail=LOGIN_FAILED_MESSAGE
+            )
+        clear_login_failures(db, email)
+        return issue_token_pair(db, user, settings)
+
+    try:
+        verify_and_consume(db, settings, PURPOSE_LOGIN_EMAIL, email, body.code or "")
+    except OtpError as exc:
+        record_login_failure(db, email)
+        _raise_otp(exc)
+    clear_login_failures(db, email)
     return issue_token_pair(db, user, settings)
 
 
@@ -180,14 +270,34 @@ def update_me(
     return user
 
 
+@router.post("/me/password/send")
+def change_password_send(
+    body: PasswordChangeSendBody,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    if not verify_password(body.old_password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="旧密码不正确")
+    try:
+        return send_change_password_code(db, settings, user.email)
+    except OtpError as exc:
+        _raise_otp(exc)
+
+
 @router.post("/me/password", status_code=status.HTTP_204_NO_CONTENT)
 def change_password(
     body: PasswordChange,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> Response:
     if not verify_password(body.old_password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid old password")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="旧密码不正确")
+    try:
+        verify_and_consume(db, settings, PURPOSE_CHANGE_PASSWORD, user.email, body.code)
+    except OtpError as exc:
+        _raise_otp(exc)
     user.password_hash = hash_password(body.new_password)
     db.add(user)
     db.flush()

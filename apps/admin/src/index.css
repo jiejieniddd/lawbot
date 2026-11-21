@@ -5,7 +5,155 @@ html,
 body,
 #root {
   margin: 0;
+  height: 100%;
   min-height: 100%;
   font-family: "IBM Plex Sans", "Segoe UI", "PingFang SC", sans-serif;
   background: #f0f2f5;
+}
+
+.admin-shell {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.admin-sider {
+  height: 100% !important;
+  overflow: auto !important;
+}
+
+.admin-main {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-content {
+  margin: 24px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.dashboard-page {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.dashboard-page .ant-card-body {
+  overflow-x: hidden;
+}
+
+.dashboard-chart {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.admin-settings-shell {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #e4e7ec;
+  overflow: hidden;
+}
+
+.admin-settings-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #eceff3;
+}
+
+.admin-settings-head h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.admin-settings-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  overflow: hidden;
+}
+
+.admin-settings-nav {
+  padding: 0.85rem 0.65rem;
+  border-right: 1px solid #eceff3;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-settings-nav-item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.875rem;
+  color: rgba(0, 0, 0, 0.88);
+  cursor: pointer;
+}
+
+.admin-settings-nav-item:hover {
+  background: #f3f4f6;
+}
+
+.admin-settings-nav-item.active {
+  background: #eceff3;
+  font-weight: 600;
+}
+
+.admin-settings-nav-icon {
+  width: 1.1rem;
+  text-align: center;
+  opacity: 0.7;
+  font-size: 0.75rem;
+}
+
+.admin-settings-pane {
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem 1.25rem 1.5rem;
+}
+
+.admin-settings-block {
+  max-width: 720px;
+}
+
+@media (max-width: 720px) {
+  .admin-settings-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .admin-settings-nav {
+    flex-direction: row;
+    border-right: 0;
+    border-bottom: 1px solid #eceff3;
+    overflow-x: auto;
+  }
+
+  .admin-settings-nav-item {
+    width: auto;
+    white-space: nowrap;
+  }
 }

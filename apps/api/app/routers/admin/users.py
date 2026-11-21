@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.deps import get_db, require_permission
+from app.services.avatars import delete_avatar_file
 from app.services.rbac_out import user_to_out
 from lawbot.accounts import normalize_account as _normalize_account
-from lawbot.db.models import Role, User
+from lawbot.agent.checkpoint import get_checkpointer
+from lawbot.db.models import Conversation, Role, User
 from lawbot.domain.schemas import (
     AdminCreate,
     ClientCreate,
@@ -23,6 +26,8 @@ from lawbot.domain.schemas import (
 )
 from lawbot.rbac.service import get_role_by_code, set_user_role
 from lawbot.security import hash_password
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["admin-users"])
 
@@ -227,3 +232,48 @@ def patch_user(
     db.commit()
     db.refresh(user)
     return user_to_out(db, user, with_permissions=False)
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    current: User = Depends(require_permission("user:delete")),
+) -> Response:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+
+    seed = settings.seed_admin_email.lower().strip()
+    if user.email.lower().strip() == seed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不能删除种子超级管理员")
+    if user.id == current.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不能删除当前登录账号")
+    if user.role != UserRole.USER:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只能硬删除 C 端用户")
+
+    conversations = list(
+        db.scalars(select(Conversation).where(Conversation.user_id == user.id)).all()
+    )
+    conversation_ids = [c.id for c in conversations]
+    avatar_url = user.avatar_url
+
+    # Delete conversations first so ORM does not NULL user_id (SQLite) before CASCADE.
+    for conv in conversations:
+        db.delete(conv)
+    db.delete(user)
+    db.commit()
+
+    try:
+        checkpointer = get_checkpointer(settings.database_url)
+        for cid in conversation_ids:
+            try:
+                checkpointer.delete_thread(str(cid))
+            except Exception:
+                logger.exception("Failed to clear checkpointer for conversation %s", cid)
+    except Exception:
+        logger.exception("Failed to obtain checkpointer while deleting user %s", user_id)
+
+    delete_avatar_file(avatar_url, settings)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

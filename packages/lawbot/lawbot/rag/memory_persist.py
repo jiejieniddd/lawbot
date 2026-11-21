@@ -4,7 +4,7 @@ import json
 import logging
 from pathlib import Path
 
-from lawbot.knowledge.hf_import import ArticleRecord
+from lawbot.knowledge.chunk import KnowledgeChunk
 from lawbot.rag.memory_store import InMemoryBM25Store, InMemoryVectorStore
 
 logger = logging.getLogger(__name__)
@@ -54,13 +54,14 @@ def load_memory_index(
         logger.info("memory index missing at %s; starting empty", records_path.parent)
         return vec, bm25, 0
 
-    records: list[ArticleRecord] = []
+    records: list[KnowledgeChunk] = []
     with records_path.open(encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
-            records.append(ArticleRecord.model_validate_json(line))
+            data = json.loads(line)
+            records.append(KnowledgeChunk.from_legacy_dict(data))
     vectors = json.loads(vectors_path.read_text(encoding="utf-8"))
     if not isinstance(vectors, list) or len(vectors) != len(records):
         raise ValueError(

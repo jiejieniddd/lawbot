@@ -28,6 +28,9 @@ from app.routers.admin import users as admin_users
 from app.routers.v1 import auth as v1_auth
 from app.routers.v1 import chat as v1_chat
 from app.routers.v1 import conversations as v1_conversations
+from app.routers.v1 import jds as v1_jds
+from app.routers.v1 import resumes as v1_resumes
+from app.routers.v1 import self_quiz as v1_self_quiz
 from app.services.avatars import resolve_upload_dir, uploads_static_root
 
 logger = logging.getLogger(__name__)
@@ -78,6 +81,9 @@ app.include_router(health.router)
 app.include_router(v1_auth.router, prefix="/api/v1")
 app.include_router(v1_conversations.router, prefix="/api/v1")
 app.include_router(v1_chat.router, prefix="/api/v1")
+app.include_router(v1_resumes.router, prefix="/api/v1")
+app.include_router(v1_jds.router, prefix="/api/v1")
+app.include_router(v1_self_quiz.router, prefix="/api/v1")
 app.include_router(admin_auth.router, prefix="/api/admin")
 app.include_router(admin_stats.router, prefix="/api/admin")
 app.include_router(admin_users.router, prefix="/api/admin")

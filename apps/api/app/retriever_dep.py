@@ -2,26 +2,12 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from sqlalchemy.orm import Session
-
 from app.config import get_settings
+from app.services.embedding_config import env_defaults_from_settings
 from lawbot.db.session import get_sessionmaker
-from lawbot.llm.client import resolve_embedding_credentials
+from lawbot.knowledge.embedding_settings import resolve_embedding_config
+from lawbot.paths import resolve_rag_memory_dir
 from lawbot.rag.factory import RetrieverSettings, build_retriever, reset_memory_stores_for_tests
-
-
-def _resolve_embedding_for_settings(db: Session | None = None) -> tuple[str, str | None]:
-    settings = get_settings()
-    emb = resolve_embedding_credentials(
-        db,
-        embedding_api_key=settings.embedding_api_key,
-        embedding_api_base=settings.embedding_api_base,
-        encryption_key=settings.encryption_key or None,
-        jwt_secret=settings.secret_key,
-    )
-    if emb is None:
-        return settings.embedding_api_key, settings.embedding_api_base
-    return emb.api_key, emb.api_base
 
 
 @lru_cache
@@ -30,6 +16,7 @@ def _cached_retriever(
     qdrant_url: str,
     opensearch_url: str,
     embedding_mode: str,
+    embedding_model: str,
     embedding_dim: int,
     memory_dir: str,
     embedding_api_key: str,
@@ -43,7 +30,7 @@ def _cached_retriever(
             qdrant_collection=settings.qdrant_collection,
             opensearch_url=opensearch_url,
             opensearch_index=settings.opensearch_index,
-            embedding_model=settings.embedding_model,
+            embedding_model=embedding_model,
             embedding_api_key=embedding_api_key,
             embedding_api_base=embedding_api_base or None,
             embedding_dim=embedding_dim,
@@ -57,24 +44,27 @@ def _cached_retriever(
 
 def get_retriever():
     s = get_settings()
-    key = s.embedding_api_key
-    base = s.embedding_api_base
-    if not (key or "").strip():
-        factory = get_sessionmaker(s.database_url)
-        db = factory()
-        try:
-            key, base = _resolve_embedding_for_settings(db)
-        finally:
-            db.close()
+    factory = get_sessionmaker(s.database_url)
+    db = factory()
+    try:
+        resolved = resolve_embedding_config(db, env_defaults_from_settings(s))
+    finally:
+        db.close()
+
+    # auto → effective (may be fake); litellm/fake keep configured mode
+    emb_mode = resolved.effective_mode if resolved.mode == "auto" else resolved.mode
+
+    memory_dir = str(resolve_rag_memory_dir(s.rag_memory_dir))
     return _cached_retriever(
         s.retriever_mode,
         s.qdrant_url,
         s.opensearch_url,
-        s.embedding_mode,
-        s.embedding_dim,
-        s.rag_memory_dir,
-        key or "",
-        base or "",
+        emb_mode,
+        resolved.embedding_model,
+        resolved.embedding_dim,
+        memory_dir,
+        resolved.api_key or "",
+        resolved.api_base or "",
     )
 
 

@@ -1,9 +1,5 @@
 .env
 .venv/
-data/uploads/
-data/rag_memory/
-data/hf/
-data/agent_traces/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -13,7 +9,6 @@ dist/
 build/
 *.egg-info/
 node_modules/
-dist/
 .DS_Store
 *.log
 .coverage
@@ -23,6 +18,22 @@ htmlcov/
 apps/web/dist/
 apps/admin/dist/
 
+# Local uploads & RAG indexes (rebuild via import scripts)
+data/uploads/
+data/rag_memory/
+data/rag_memory_self_test/
+data/rag_memory.bak_*/
+data/hf/
+data/_trash_law_*/
+
+# Agent debug traces (any location)
+data/agent_traces/
+apps/api/data/agent_traces/
+**/agent_traces/
+
+# Local ops / phase reports (not product assets)
+data/_*.md
+data/_*.json
+
 # Personal interview prep (local only)
 docs/interview-agent-qa.md
-

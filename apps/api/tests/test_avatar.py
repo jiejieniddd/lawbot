@@ -10,17 +10,16 @@ _PNG = (
 )
 
 
-def _register(client, email: str = "avatar01@example.com"):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": "secret12", "display_name": "Avatar"},
-    )
-    assert reg.status_code == 200
-    return reg.json()["access_token"]
+from otp_helpers import register_user
 
 
-def test_upload_avatar_ok(client):
-    token = _register(client)
+def _register(client, otp_mail, email: str = "avatar01@example.com"):
+    reg = register_user(client, otp_mail, email, display_name="Avatar")
+    return reg["access_token"]
+
+
+def test_upload_avatar_ok(client, otp_mail):
+    token = _register(client, otp_mail)
     headers = {"Authorization": f"Bearer {token}"}
     files = {"file": ("a.png", io.BytesIO(_PNG), "image/png")}
     resp = client.post("/api/v1/auth/me/avatar", headers=headers, files=files)
@@ -39,15 +38,15 @@ def test_upload_avatar_ok(client):
     assert me.json()["avatar_url"] == body["avatar_url"]
 
 
-def test_upload_avatar_rejects_non_image(client):
-    token = _register(client, "badtype01@example.com")
+def test_upload_avatar_rejects_non_image(client, otp_mail):
+    token = _register(client, otp_mail, "badtype01@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     files = {"file": ("x.txt", io.BytesIO(b"hello"), "text/plain")}
     resp = client.post("/api/v1/auth/me/avatar", headers=headers, files=files)
     assert resp.status_code == 400
 
 
-def test_upload_avatar_rejects_too_large(client, monkeypatch):
+def test_upload_avatar_rejects_too_large(client, otp_mail, monkeypatch):
     from app.config import get_settings
 
     get_settings.cache_clear()
@@ -56,7 +55,7 @@ def test_upload_avatar_rejects_too_large(client, monkeypatch):
     settings = get_settings()
     assert settings.avatar_max_bytes == 64
 
-    token = _register(client, "bigfile01@example.com")
+    token = _register(client, otp_mail, "bigfile01@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     blob = b"x" * 128
     files = {"file": ("big.png", io.BytesIO(blob), "image/png")}
@@ -73,8 +72,8 @@ def test_upload_avatar_unauthorized(client):
     assert resp.status_code == 401
 
 
-def test_delete_avatar(client):
-    token = _register(client, "delavatar01@example.com")
+def test_delete_avatar(client, otp_mail):
+    token = _register(client, otp_mail, "delavatar01@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     files = {"file": ("a.png", io.BytesIO(_PNG), "image/png")}
     up = client.post("/api/v1/auth/me/avatar", headers=headers, files=files)

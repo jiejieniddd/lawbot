@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api } from '../api/client'
 import { AUTH_FOOTER_DISCLAIMER } from '../constants/disclaimer'
+import '../styles/auth.css'
 
 const email = ref('')
 const code = ref('')
@@ -101,13 +102,18 @@ async function onReset() {
 
 <template>
   <div class="auth-shell">
-    <aside class="brand-pane" aria-label="LawBot">
-      <div class="brand-mark">LawBot</div>
+    <aside class="brand-pane" aria-label="CareerBot">
+      <div class="brand-mark">CareerBot</div>
       <p class="brand-line">找回密码</p>
       <p class="brand-note">验证码会发到已注册邮箱。未注册或已停用的地址不会收到邮件。</p>
     </aside>
     <section class="form-pane">
       <div class="form-block">
+        <div class="sticker-row" aria-hidden="true">
+          <span class="sticker sunny" />
+          <span class="sticker coral" />
+          <span class="sticker mint" />
+        </div>
         <h1>忘记密码</h1>
         <p class="lead">使用邮箱验证码设置新密码</p>
         <el-form class="auth-form" label-position="top" @submit.prevent="onReset">
@@ -167,7 +173,7 @@ async function onReset() {
               size="large"
               class="submit"
             >
-              重置密码
+              找回密码
             </el-button>
           </template>
         </el-form>
@@ -181,134 +187,29 @@ async function onReset() {
 </template>
 
 <style scoped>
-.auth-shell {
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: grid;
-  grid-template-columns: minmax(280px, 0.42fr) minmax(320px, 0.58fr);
-  background: var(--bg);
-}
-
-.brand-pane {
-  background: linear-gradient(
-    165deg,
-    color-mix(in srgb, var(--color-primary) 88%, #1a2332) 0%,
-    var(--color-primary) 55%,
-    color-mix(in srgb, var(--color-info) 55%, var(--color-primary)) 100%
-  );
-  color: #fff;
-  padding: clamp(2rem, 6vw, 3.5rem);
+.sticker-row {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.75rem;
-  animation: brand-in 0.55s ease-out both;
+  gap: 8px;
+  margin-bottom: 16px;
+  transform: rotate(-2deg);
+  width: fit-content;
 }
 
-.brand-mark {
-  font-family: var(--font-ui);
-  font-size: var(--fs-brand);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
+.sticker {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-ink);
 }
 
-.brand-line {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 500;
-  opacity: 0.95;
+.sticker.coral {
+  background: var(--color-coral);
 }
 
-.brand-note {
-  margin: 0.5rem 0 0;
-  max-width: 28ch;
-  font-size: var(--fs-small);
-  line-height: 1.55;
-  opacity: 0.82;
+.sticker.mint {
+  background: var(--color-mint);
 }
 
-.form-pane {
-  display: grid;
-  place-items: center;
-  padding: 2rem 1.25rem;
-  background: var(--surface);
-}
-
-.form-block {
-  width: min(400px, 100%);
-}
-
-h1 {
-  margin: 0;
-  font-family: var(--font-ui);
-  font-size: var(--fs-title);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.lead {
-  margin: 0.35rem 0 1.35rem;
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
-.code-row {
-  display: flex;
-  gap: 0.5rem;
-  width: 100%;
-}
-
-.code-row .el-input {
-  flex: 1;
-}
-
-.submit {
-  width: 100%;
-  margin-top: 0.25rem;
-}
-
-.hint {
-  margin-top: 1.1rem;
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
-.foot-note {
-  margin-top: 1.25rem;
-  font-size: var(--fs-fine);
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-@keyframes brand-in {
-  from {
-    opacity: 0;
-    transform: translateX(-12px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .brand-pane {
-    animation: none;
-  }
-}
-
-@media (max-width: 840px) {
-  .auth-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-  }
-  .brand-pane {
-    padding: 1.5rem 1.25rem;
-    min-height: auto;
-  }
-  .brand-note {
-    display: none;
-  }
+.sticker.sunny {
+  background: var(--color-sunny);
 }
 </style>

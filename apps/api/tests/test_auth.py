@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from lawbot.db.models import RefreshToken, User
 from lawbot.security import create_access_token, create_refresh_token, hash_password
+from otp_helpers import code_from, login_user, register_user
 
 
 def _assert_token_response(body: dict) -> None:
@@ -12,21 +13,13 @@ def _assert_token_response(body: dict) -> None:
     assert body["expires_in"] > 0
 
 
-def test_register_and_login(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "user01@example.com", "password": "secret12", "display_name": "U"},
-    )
-    assert reg.status_code == 200
-    _assert_token_response(reg.json())
+def test_register_and_login(client, otp_mail):
+    reg = register_user(client, otp_mail, "user01@example.com", display_name="U")
+    _assert_token_response(reg)
 
-    login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "user01@example.com", "password": "secret12"},
-    )
-    assert login.status_code == 200
-    _assert_token_response(login.json())
-    token = login.json()["access_token"]
+    login = login_user(client, otp_mail, "user01@example.com", "secret12")
+    _assert_token_response(login)
+    token = login["access_token"]
 
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200
@@ -34,35 +27,25 @@ def test_register_and_login(client):
     assert me.json()["display_name"] == "U"
 
 
-def test_register_conflict_message(client):
-    first = client.post(
-        "/api/v1/auth/register",
-        json={"email": "dupuser@example.com", "password": "secret12"},
-    )
-    assert first.status_code == 200
-    again = client.post(
-        "/api/v1/auth/register",
-        json={"email": "dupuser@example.com", "password": "secret12"},
-    )
-    assert again.status_code == 400
-    assert again.json()["detail"] == "账号已注册"
+def test_register_conflict_message(client, otp_mail):
+    register_user(client, otp_mail, "dupuser@example.com")
+    again_send = client.post("/api/v1/auth/register/send", json={"email": "dupuser@example.com"})
+    assert again_send.status_code == 400
+    assert again_send.json()["detail"] == "该邮箱已注册"
 
 
-def test_register_rejects_invalid_accounts(client):
+def test_register_rejects_invalid_accounts(client, otp_mail):
     for bad in ("ab", "user01", "has space", "Bad-Name", "not-an-email", ""):
         resp = client.post(
-            "/api/v1/auth/register",
-            json={"email": bad, "password": "secret12"},
+            "/api/v1/auth/register/send",
+            json={"email": bad},
         )
-        assert resp.status_code == 422, bad
-    ok = client.post(
-        "/api/v1/auth/register",
-        json={"email": "valid.user@example.com", "password": "secret12"},
-    )
-    assert ok.status_code == 200
+        assert resp.status_code in (400, 422), bad
+    ok = register_user(client, otp_mail, "valid.user@example.com")
+    _assert_token_response(ok)
 
 
-def test_legacy_username_can_still_login(client, db_session):
+def test_legacy_username_rejected_on_c_end_login(client, db_session, otp_mail):
     db_session.add(
         User(
             email="olduser",
@@ -75,25 +58,21 @@ def test_legacy_username_can_still_login(client, db_session):
     db_session.commit()
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "olduser", "password": "secret12"},
+        json={"mode": "password", "email": "olduser", "password": "secret12"},
     )
-    assert login.status_code == 200
-    _assert_token_response(login.json())
+    assert login.status_code == 400
+    assert "邮箱" in login.json()["detail"]
 
 
-def test_register_default_display_name_is_account(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "myuser@example.com", "password": "secret12"},
-    )
-    assert reg.status_code == 200
-    token = reg.json()["access_token"]
+def test_register_default_display_name_is_account(client, otp_mail):
+    reg = register_user(client, otp_mail, "myuser@example.com")
+    token = reg["access_token"]
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.json()["display_name"] == "myuser@example.com"
     assert me.json()["email"] == "myuser@example.com"
 
 
-def test_legacy_email_account_can_still_login(client, db_session):
+def test_legacy_email_account_can_still_login(client, db_session, otp_mail):
     db_session.add(
         User(
             email="old@example.com",
@@ -105,12 +84,8 @@ def test_legacy_email_account_can_still_login(client, db_session):
     )
     db_session.commit()
 
-    login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "old@example.com", "password": "secret12"},
-    )
-    assert login.status_code == 200
-    _assert_token_response(login.json())
+    login = login_user(client, otp_mail, "old@example.com", "secret12")
+    _assert_token_response(login)
 
 
 def test_admin_login(client, admin_user):
@@ -122,12 +97,9 @@ def test_admin_login(client, admin_user):
     _assert_token_response(resp.json())
 
 
-def test_refresh_rotates_and_revokes_old(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "rotate01@example.com", "password": "secret12"},
-    )
-    old_refresh = reg.json()["refresh_token"]
+def test_refresh_rotates_and_revokes_old(client, otp_mail):
+    reg = register_user(client, otp_mail, "rotate01@example.com")
+    old_refresh = reg["refresh_token"]
 
     refreshed = client.post("/api/v1/auth/refresh", json={"refresh_token": old_refresh})
     assert refreshed.status_code == 200
@@ -146,32 +118,23 @@ def test_refresh_rotates_and_revokes_old(client):
     assert me.status_code == 200
 
 
-def test_refresh_rejects_access_token_typ(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "typ01@example.com", "password": "secret12"},
-    )
-    access = reg.json()["access_token"]
+def test_refresh_rejects_access_token_typ(client, otp_mail):
+    reg = register_user(client, otp_mail, "typ01@example.com")
+    access = reg["access_token"]
     resp = client.post("/api/v1/auth/refresh", json={"refresh_token": access})
     assert resp.status_code == 401
 
 
-def test_refresh_rejects_bad_signature(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "sig01@example.com", "password": "secret12"},
-    )
-    bad = reg.json()["refresh_token"] + "x"
+def test_refresh_rejects_bad_signature(client, otp_mail):
+    reg = register_user(client, otp_mail, "sig01@example.com")
+    bad = reg["refresh_token"] + "x"
     resp = client.post("/api/v1/auth/refresh", json={"refresh_token": bad})
     assert resp.status_code == 401
 
 
-def test_refresh_rejects_revoked_and_expired(client, db_session):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "expire01@example.com", "password": "secret12"},
-    )
-    refresh = reg.json()["refresh_token"]
+def test_refresh_rejects_revoked_and_expired(client, db_session, otp_mail):
+    reg = register_user(client, otp_mail, "expire01@example.com")
+    refresh = reg["refresh_token"]
     from jose import jwt
 
     payload = jwt.get_unverified_claims(refresh)
@@ -185,11 +148,8 @@ def test_refresh_rejects_revoked_and_expired(client, db_session):
     revoked = client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
     assert revoked.status_code == 401
 
-    reg2 = client.post(
-        "/api/v1/auth/register",
-        json={"email": "expire02@example.com", "password": "secret12"},
-    )
-    refresh2 = reg2.json()["refresh_token"]
+    reg2 = register_user(client, otp_mail, "expire02@example.com")
+    refresh2 = reg2["refresh_token"]
     payload2 = jwt.get_unverified_claims(refresh2)
     row2 = db_session.get(RefreshToken, payload2["jti"])
     assert row2 is not None
@@ -200,33 +160,27 @@ def test_refresh_rejects_revoked_and_expired(client, db_session):
     assert expired.status_code == 401
 
 
-def test_refresh_rejects_disabled_user(client, db_session):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "disabled01@example.com", "password": "secret12"},
-    )
-    refresh = reg.json()["refresh_token"]
+def test_refresh_rejects_disabled_user(client, db_session, otp_mail):
+    reg = register_user(client, otp_mail, "disabled01@example.com")
+    refresh = reg["refresh_token"]
 
     user = db_session.query(User).filter_by(email="disabled01@example.com").one()
     user.disabled = True
     db_session.commit()
 
     login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "disabled01@example.com", "password": "secret12"},
+        "/api/v1/auth/login/send",
+        json={"email": "disabled01@example.com"},
     )
-    assert login.status_code == 403
+    assert login.status_code == 401
 
     resp = client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
     assert resp.status_code == 403
 
 
-def test_logout_revokes_refresh(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "logout01@example.com", "password": "secret12"},
-    )
-    refresh = reg.json()["refresh_token"]
+def test_logout_revokes_refresh(client, otp_mail):
+    reg = register_user(client, otp_mail, "logout01@example.com")
+    refresh = reg["refresh_token"]
 
     out = client.post("/api/v1/auth/logout", json={"refresh_token": refresh})
     assert out.status_code == 204
@@ -234,27 +188,20 @@ def test_logout_revokes_refresh(client):
     again = client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
     assert again.status_code == 401
 
-    # idempotent
     out2 = client.post("/api/v1/auth/logout", json={"refresh_token": refresh})
     assert out2.status_code == 204
 
 
-def test_bearer_refresh_rejected_on_me(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "bearer01@example.com", "password": "secret12"},
-    )
-    refresh = reg.json()["refresh_token"]
+def test_bearer_refresh_rejected_on_me(client, otp_mail):
+    reg = register_user(client, otp_mail, "bearer01@example.com")
+    refresh = reg["refresh_token"]
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {refresh}"})
     assert me.status_code == 401
 
 
-def test_admin_refresh_rejects_non_admin(client, admin_user):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "normal01@example.com", "password": "secret12"},
-    )
-    refresh = reg.json()["refresh_token"]
+def test_admin_refresh_rejects_non_admin(client, admin_user, otp_mail):
+    reg = register_user(client, otp_mail, "normal01@example.com")
+    refresh = reg["refresh_token"]
     resp = client.post("/api/admin/auth/refresh", json={"refresh_token": refresh})
     assert resp.status_code == 403
 
@@ -269,7 +216,6 @@ def test_admin_refresh_rejects_non_admin(client, admin_user):
 
 
 def test_create_tokens_include_typ(client):
-    # sanity on helpers used by issue_token_pair
     access = create_access_token(
         subject="u",
         email="a@b.c",
@@ -291,13 +237,9 @@ def test_create_tokens_include_typ(client):
     assert jwt.get_unverified_claims(refresh)["typ"] == "refresh"
 
 
-def test_update_profile_display_name(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "profile01@example.com", "password": "secret12", "display_name": "Old"},
-    )
-    assert reg.status_code == 200
-    token = reg.json()["access_token"]
+def test_update_profile_display_name(client, otp_mail):
+    reg = register_user(client, otp_mail, "profile01@example.com", display_name="Old")
+    token = reg["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     patched = client.patch(
@@ -315,41 +257,66 @@ def test_update_profile_display_name(client):
     assert me.json().get("created_at") is not None
 
 
-def test_change_password_rejects_wrong_old(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "pwbad01@example.com", "password": "secret12"},
+def test_change_password_rejects_wrong_old(client, otp_mail):
+    reg = register_user(client, otp_mail, "pwbad01@example.com")
+    token = reg["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    send = client.post(
+        "/api/v1/auth/me/password/send",
+        headers=headers,
+        json={"old_password": "wrong-old"},
     )
-    token = reg.json()["access_token"]
+    assert send.status_code == 400
     resp = client.post(
         "/api/v1/auth/me/password",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"old_password": "wrong-old", "new_password": "newpass99"},
+        headers=headers,
+        json={"old_password": "wrong-old", "new_password": "newpass99", "code": "000000"},
     )
     assert resp.status_code == 400
 
 
-def test_change_password_revokes_refresh(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "pwok01@example.com", "password": "secret12"},
+def test_change_password_requires_code(client, otp_mail):
+    reg = register_user(client, otp_mail, "pwcode01@example.com")
+    token = reg["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    missing = client.post(
+        "/api/v1/auth/me/password",
+        headers=headers,
+        json={"old_password": "secret12", "new_password": "newpass99"},
     )
-    access = reg.json()["access_token"]
-    refresh = reg.json()["refresh_token"]
+    assert missing.status_code == 422
+    bad = client.post(
+        "/api/v1/auth/me/password",
+        headers=headers,
+        json={"old_password": "secret12", "new_password": "newpass99", "code": "000000"},
+    )
+    assert bad.status_code == 400
+
+
+def test_change_password_revokes_refresh(client, otp_mail):
+    email = "pwok01@example.com"
+    reg = register_user(client, otp_mail, email)
+    access = reg["access_token"]
+    refresh = reg["refresh_token"]
+    headers = {"Authorization": f"Bearer {access}"}
+
+    sent = client.post(
+        "/api/v1/auth/me/password/send",
+        headers=headers,
+        json={"old_password": "secret12"},
+    )
+    assert sent.status_code == 200, sent.text
+    code = code_from(otp_mail, email)
 
     ok = client.post(
         "/api/v1/auth/me/password",
-        headers={"Authorization": f"Bearer {access}"},
-        json={"old_password": "secret12", "new_password": "newpass99"},
+        headers=headers,
+        json={"old_password": "secret12", "new_password": "newpass99", "code": code},
     )
     assert ok.status_code == 204
 
     revoked = client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
     assert revoked.status_code == 401
 
-    login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "pwok01@example.com", "password": "newpass99"},
-    )
-    assert login.status_code == 200
-    _assert_token_response(login.json())
+    login = login_user(client, otp_mail, email, "newpass99")
+    _assert_token_response(login)

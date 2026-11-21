@@ -58,37 +58,59 @@ def process_job(job: KnowledgeImportJob) -> None:
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
-    from lawbot.llm.client import resolve_embedding_credentials
+    from lawbot.knowledge.embedding_settings import (
+        EnvEmbeddingDefaults,
+        require_litellm_ready,
+        resolve_embedding_config,
+    )
 
     settings = get_worker_settings()
     cfg = job.config or {}
     max_rows = int(cfg.get("max_rows", settings.import_max_rows))
     recreate = bool(cfg.get("recreate", False))
     dataset_id = str(cfg.get("dataset", settings.hf_dataset_id))
-    subset = str(cfg.get("subset", "articles"))
+    subset = str(cfg.get("subset", "train"))
+    import_source = str(cfg.get("source", "interview_zh"))
+    domain = cfg.get("domain")
+    allowlist = cfg.get("allowlist")
+    if isinstance(allowlist, str):
+        allowlist = [x.strip() for x in allowlist.split(",") if x.strip()]
     index_backend = str(cfg.get("index_backend", settings.index_backend)).lower()
-    memory_dir = str(cfg.get("memory_dir", settings.rag_memory_dir))
+    from lawbot.paths import resolve_rag_memory_dir
 
-    embedding_api_key = settings.embedding_api_key
-    embedding_api_base = settings.embedding_api_base
+    # Domain D (cmmlu_cs / self_test) defaults to isolated dir — never main search_kb.
+    default_memory = settings.rag_memory_dir
+    if import_source == "cmmlu_cs" and not cfg.get("memory_dir"):
+        default_memory = settings.rag_self_test_dir
+    memory_dir = str(resolve_rag_memory_dir(cfg.get("memory_dir", default_memory)))
+
     engine = create_engine(settings.database_url)
     db = Session(engine)
     try:
-        emb = resolve_embedding_credentials(
+        resolved = resolve_embedding_config(
             db,
-            embedding_api_key=embedding_api_key,
-            embedding_api_base=embedding_api_base,
-            encryption_key=settings.encryption_key or None,
-            jwt_secret=settings.jwt_secret,
+            EnvEmbeddingDefaults(
+                mode=settings.embedding_mode,
+                embedding_model=settings.embedding_model,
+                api_key=settings.embedding_api_key,
+                api_base=settings.embedding_api_base,
+                embedding_dim=settings.embedding_dim,
+                encryption_key=settings.encryption_key or None,
+                jwt_secret=settings.jwt_secret,
+            ),
         )
-        if emb is not None:
-            embedding_api_key = emb.api_key
-            embedding_api_base = emb.api_base
-            logger.info("embedding credentials source=%s", emb.source)
-        elif settings.embedding_mode == "litellm":
-            raise RuntimeError(
-                "EMBEDDING_MODE=litellm but no EMBEDDING_API_KEY and no enabled llm_providers"
-            )
+        emb_mode = resolved.effective_mode if resolved.mode == "auto" else resolved.mode
+        if resolved.mode == "litellm":
+            err = require_litellm_ready(resolved)
+            if err:
+                raise RuntimeError(err)
+        logger.info(
+            "embedding source=%s mode=%s effective=%s model=%s",
+            resolved.source,
+            resolved.mode,
+            emb_mode,
+            resolved.embedding_model or "(none)",
+        )
     finally:
         db.close()
         engine.dispose()
@@ -99,22 +121,25 @@ def process_job(job: KnowledgeImportJob) -> None:
         max_rows,
         dataset_id,
         index_backend,
-        settings.embedding_mode,
+        emb_mode,
     )
     try:
         stats = run_import(
             max_rows=max_rows,
             dataset_id=dataset_id,
             subset=subset,
+            source=import_source,
+            domain=str(domain) if domain else None,
+            allowlist=allowlist if isinstance(allowlist, list) else None,
             qdrant_url=settings.qdrant_url,
             opensearch_url=settings.opensearch_url,
             collection=settings.qdrant_collection,
             index=settings.opensearch_index,
-            embedding_model=settings.embedding_model,
-            embedding_api_key=embedding_api_key,
-            embedding_api_base=embedding_api_base,
-            embedding_dim=settings.embedding_dim,
-            embedding_mode=settings.embedding_mode,
+            embedding_model=resolved.embedding_model,
+            embedding_api_key=resolved.api_key,
+            embedding_api_base=resolved.api_base,
+            embedding_dim=resolved.embedding_dim,
+            embedding_mode=emb_mode,
             recreate=recreate,
             index_backend=index_backend,
             memory_dir=memory_dir,

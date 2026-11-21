@@ -1,0 +1,1064 @@
+{
+  "version": 1,
+  "source": "job_skills + optional FairCV sample",
+  "faircv_embedded": false,
+  "roles": {
+    "算法工程师": [
+      "C++",
+      "Python",
+      "C/C++",
+      "PyTorch",
+      "TensorFlow",
+      "MATLAB",
+      "Linux",
+      "OpenCV",
+      "NLP",
+      "Java",
+      "ROS",
+      "SLAM"
+    ],
+    "视觉": [
+      "Python",
+      "PyTorch",
+      "TensorFlow",
+      "C++",
+      "C/C++",
+      "CNN",
+      "Linux",
+      "AIGC",
+      "RNN",
+      "OpenCV",
+      "CUDA",
+      "02619M-视觉"
+    ],
+    "NLP": [
+      "NLP",
+      "Python",
+      "C++",
+      "PyTorch",
+      "C/C++",
+      "TensorFlow",
+      "Java",
+      "LLM",
+      "Linux",
+      "NLP算法专家",
+      "智能信息-夸克-NLP算法专家-医疗-杭州",
+      "本职位主要负责Query分析"
+    ],
+    "AI工程师": [
+      "Python",
+      "C++",
+      "PyTorch",
+      "TensorFlow",
+      "AI工程师",
+      "NLP",
+      "<p>",
+      "Linux",
+      "Java",
+      "CNN",
+      "RNN",
+      "Go"
+    ],
+    "大模型": [
+      "Python",
+      "PyTorch",
+      "NLP",
+      "TensorFlow",
+      "C++",
+      "C/C++",
+      "LLM",
+      "LLM垂域模型技术专家",
+      "MIG-大模型算法研究员",
+      "<p>",
+      "蚂蚁集团-算法专家-RAG大模型方向-杭州",
+      "NLP大模型"
+    ],
+    "SLAM": [
+      "SLAM",
+      "Linux",
+      "ROS",
+      "C++",
+      "C/C++",
+      "SLAM算法",
+      "OpenCV",
+      "Go",
+      "视觉slam算法",
+      "Python",
+      "CNN",
+      "Docker"
+    ],
+    "算法专家": [
+      "C++",
+      "Python",
+      "C/C++",
+      "PyTorch",
+      "TensorFlow",
+      "OpenCV",
+      "MATLAB",
+      "CUDA",
+      "Halcon",
+      "<p>工作内容：<",
+      "p><p>1.",
+      "p>"
+    ],
+    "算法实习生": [
+      "Python",
+      "C++",
+      "C/C++",
+      "PyTorch",
+      "TensorFlow",
+      "OpenCV",
+      "Java",
+      "CNN",
+      "CUDA",
+      "研究的问题包括但不限于：2D",
+      "3D物体检测与跟踪",
+      "ROS"
+    ],
+    "算法开发工程师": [
+      "C++",
+      "Python",
+      "Java",
+      "PyTorch",
+      "TensorFlow",
+      "OpenCV",
+      "Linux",
+      "Docker",
+      "C/C++",
+      "Shell",
+      "<div>",
+      "div><div>"
+    ],
+    "算法研究员": [
+      "C++",
+      "Python",
+      "PyTorch",
+      "TensorFlow",
+      "CUDA",
+      "Linux",
+      "AIGC",
+      "Docker",
+      "MATLAB",
+      "<p>主要职责：<",
+      "p><p>1.",
+      "p><p>2."
+    ],
+    "AI算法实习生": [
+      "Python",
+      "AI算法实习生",
+      "PyTorch",
+      "TensorFlow",
+      "RNN",
+      "Transformer",
+      "Hadoop",
+      "Hive",
+      "Spark",
+      "京东物流运营AI算法组。希望你从",
+      "C++",
+      "C/C++"
+    ],
+    "图像算法": [
+      "C++",
+      "Python",
+      "PyTorch",
+      "TensorFlow",
+      "OpenCV",
+      "C/C++",
+      "Keras",
+      "ROS",
+      "<p>",
+      "Java",
+      "Linux",
+      "图像处理库（OpenCV等）"
+    ],
+    "AIGC": [
+      "Python",
+      "AIGC",
+      "PyTorch",
+      "Linux",
+      "多模态AIGC算法专家",
+      "如Diffusion",
+      "Models",
+      "GAN",
+      "VAE",
+      "Autoregressive",
+      "Models等",
+      "C++"
+    ],
+    "AI算法": [
+      "Python",
+      "NLP",
+      "AI算法",
+      "C++",
+      "C/C++",
+      "PyTorch",
+      "TensorFlow",
+      "Transformer",
+      "Go",
+      "Django",
+      "MySQL",
+      "Mysql"
+    ],
+    "远程-密码学算法专家(需要英文口语)": [
+      "C++",
+      "Java",
+      "Go",
+      "ZKP",
+      "Job",
+      "Description",
+      "The",
+      "Blockchain",
+      "Scientist",
+      "will",
+      "be",
+      "key"
+    ],
+    "算法": [
+      "Python",
+      "C++",
+      "C/C++",
+      "Java",
+      "PyTorch",
+      "TensorFlow",
+      "NLP",
+      "CNN",
+      "RNN",
+      "Transformer",
+      "LLM",
+      "LSTM"
+    ],
+    "算法优化工程师": [
+      "Python",
+      "Java",
+      "PyTorch",
+      "TensorFlow",
+      "C++",
+      "C/C++",
+      "Go",
+      "SLAM",
+      "DSP",
+      "1.负责slam",
+      "AI等机器学习算法在CPU",
+      "GPU"
+    ],
+    "算法部署工程师": [
+      "Python",
+      "C++",
+      "C/C++",
+      "PyTorch",
+      "TensorFlow",
+      "OpenCV",
+      "CUDA",
+      "CNN",
+      "DSP",
+      "python",
+      "tensorflow",
+      "pytorch"
+    ],
+    "AI算法专家": [
+      "AI算法专家",
+      "Python",
+      "Java",
+      "Go",
+      "MySQL",
+      "SQL",
+      "视频及3D相关的研发；",
+      "OpenCV",
+      "NLP",
+      "gan",
+      "nlp"
+    ],
+    "图像处理算法(MJ000564)": [
+      "C++",
+      "MATLAB",
+      "TensorFlow",
+      "CUDA",
+      "SLAM",
+      "PCL",
+      "(MJ000564)",
+      "OpenCL",
+      "<p>工作职责：<br><",
+      "p><p>1.",
+      "p><p><br><",
+      "p><p>任职要求"
+    ],
+    "算法应用工程师": [
+      "Python",
+      "Linux",
+      "C++",
+      "C/C++",
+      "OpenCV",
+      "MySQL",
+      "Ffmpeg",
+      "NLP",
+      "LLM",
+      "AIGC"
+    ],
+    "2024届图像算法岗": [
+      "Python",
+      "C++",
+      "C/C++",
+      "OpenCV",
+      "PCL",
+      "C#",
+      "2D视觉",
+      "3d视觉",
+      "工作内容:<br>1",
+      "负责抓取中目标物体定位算法开发；<br>2",
+      "改进现有方法；<br>3"
+    ],
+    "云计算工程师": [
+      "Linux",
+      "H3CLOUD",
+      "OS",
+      "<div>",
+      "备注：有HCIE认证的优先",
+      "或有ASP企业网",
+      "云计算项目的能力（含实施方案和LLD输出）3",
+      "Python",
+      "Docker",
+      "Kubernetes"
+    ],
+    "感知算法实习生": [
+      "C++",
+      "C/C++",
+      "Python",
+      "TensorFlow",
+      "OpenCV",
+      "CNN",
+      "模型部署等相关工作<br>2.",
+      "车道线等目标标注及优化工作<br>3.",
+      "操作手册等文档工作<br"
+    ],
+    "编译器算子工程师": [
+      "Python",
+      "C++",
+      "C/C++",
+      "PyTorch",
+      "TensorFlow",
+      "TVM",
+      "熟悉C",
+      "C++和Python；",
+      "有过⼀定的算⼦开发经验（Convolution",
+      "Attention",
+      "Ma"
+    ],
+    "PNC算法": [
+      "Python",
+      "C++",
+      "C/C++",
+      "MATLAB",
+      "PyTorch",
+      "TensorFlow",
+      "Linux",
+      "ROS",
+      "DSP",
+      "PNC算法"
+    ],
+    "多模态算法专家(MJ001070)": [
+      "Python",
+      "PyTorch",
+      "TensorFlow",
+      "Linux",
+      "NLP",
+      "LLM",
+      "(MJ001070)",
+      "从事多模态预训练模型（VLP）研究",
+      "finetune",
+      "prompt等"
+    ],
+    "算法负责人": [
+      "C++",
+      "C/C++",
+      "MATLAB",
+      "ROS",
+      "SLAM",
+      "SLAM算法",
+      "SA算法",
+      "外slam混导）",
+      "AI算法等研究。",
+      "AGV（自动引"
+    ],
+    "AI算法研究员": [
+      "Python",
+      "C++",
+      "Java",
+      "AI算法研究员",
+      "从事IT领域的感知",
+      "探索大模型在IT领域的应用",
+      "并通过IT领域数据",
+      "强化模型在华为IT各方面的能力。",
+      "负责公司IT产品的研究与创新"
+    ],
+    "AI计算平台研发工程师": [
+      "Python",
+      "C++",
+      "Go",
+      "PyTorch",
+      "TensorFlow",
+      "Kubernetes",
+      "AI计算平台研发工程师",
+      "负责研发AI计算平台",
+      "负责设计和研发AI端到端任务编排体系"
+    ],
+    "ai研发工程师": [
+      "Python",
+      "Go",
+      "TensorFlow",
+      "Redis",
+      "MySQL",
+      "ai研发工程师",
+      "Golang",
+      "Hive",
+      "ai研发"
+    ],
+    "弹性计算研发专家": [
+      "Python",
+      "C++",
+      "C/C++",
+      "Go",
+      "Rust",
+      "Linux",
+      "Docker",
+      "Kubernetes",
+      "kubernetes"
+    ],
+    "智能算法软件开发⼯程师（数字钥匙）": [
+      "C++",
+      "C/C++",
+      "BLE",
+      "UWB",
+      "\u0000Responsibility:\u0000",
+      "a.",
+      "PEPS功能等；",
+      "b.",
+      "c."
+    ],
+    "智驾感知算法储备生（校园）": [
+      "Python",
+      "C++",
+      "C/C++",
+      "OpenCV",
+      "Linux",
+      "CNN",
+      "RNN",
+      "LINUX",
+      "GIT"
+    ],
+    "算法技术负责人": [
+      "Python",
+      "C++",
+      "PyTorch",
+      "TensorFlow",
+      "OpenCV",
+      "CUDA",
+      "ROS",
+      "SLAM",
+      "PCL"
+    ],
+    "算法部署": [
+      "Python",
+      "C++",
+      "C/C++",
+      "Java",
+      "PyTorch",
+      "TensorFlow",
+      "DSP",
+      "&quot;1.",
+      "负责Tensorflow"
+    ],
+    "芯片算法适配/优化工程师(JXHJV)": [
+      "Python",
+      "C++",
+      "C/C++",
+      "PyTorch",
+      "TensorFlow",
+      "NLP",
+      "优化工程师(JXHJV)",
+      "Objective-C",
+      "C语言"
+    ],
+    "路侧融合感知算法专家": [
+      "Python",
+      "C++",
+      "C/C++",
+      "Java",
+      "PyTorch",
+      "TensorFlow",
+      "CUDA",
+      "Linux",
+      "ROS"
+    ],
+    "高级AI工程师": [
+      "Python",
+      "C++",
+      "Java",
+      "PyTorch",
+      "TensorFlow",
+      "CUDA",
+      "Linux",
+      "Transformer",
+      "高级AI"
+    ],
+    "AI算法工程化开发工程师": [
+      "C++",
+      "C/C++",
+      "Java",
+      "PyTorch",
+      "TensorFlow",
+      "OpenCV",
+      "OpenGL",
+      "AI算法工程化开发工程师"
+    ],
+    "优化算法实习生": [
+      "Python",
+      "C++",
+      "MATLAB",
+      "CUDA",
+      "Linux",
+      "C语言",
+      "3.C++工程实现；",
+      "4.UT测试代码实现与测试报告；"
+    ],
+    "导航算法专家": [
+      "C++",
+      "C/C++",
+      "MATLAB",
+      "DSP",
+      "可Base深圳",
+      "Linux"
+    ],
+    "机器人编程老师": [
+      "Python",
+      "C++",
+      "Java",
+      "EV3",
+      "NOIP",
+      "VEX",
+      "WRO",
+      "<div>"
+    ],
+    "算法开发工程师（点云分析岗）": [
+      "Python",
+      "C++",
+      "C/C++",
+      "PyTorch",
+      "TensorFlow",
+      "熟练使用C",
+      "Python等编程语言中的至少一种3",
+      "熟悉至少一种深度学习框架(如PyT"
+    ],
+    "融合算法开发-偏车道线融合": [
+      "Python",
+      "C++",
+      "C/C++",
+      "Linux",
+      "ROS",
+      "-负责camera",
+      "radar",
+      "lidar等传感器障碍物感知结果的关联和跟踪"
+    ],
+    "预测算法": [
+      "C++",
+      "Python",
+      "PyTorch",
+      "TensorFlow",
+      "Linux",
+      "CNN",
+      "RNN"
+    ],
+    "AI算法助理工程师": [
+      "Python",
+      "PyTorch",
+      "TensorFlow",
+      "OpenCV",
+      "CNN",
+      "AI算法助理工程师",
+      "Objective-C"
+    ],
+    "ai工程师": [
+      "Python",
+      "C++",
+      "C/C++",
+      "Linux",
+      "Docker",
+      "ai工程师",
+      "跟进最新AI技术"
+    ],
+    "ai算法专家": [
+      "Python",
+      "C++",
+      "C/C++",
+      "Java",
+      "NLP",
+      "ai算法专家",
+      "对NLP自然语言识别处理"
+    ],
+    "优酷-AI数字人算法专家-杭州": [
+      "Python",
+      "C++",
+      "PyTorch",
+      "TensorFlow",
+      "优酷-AI数字人算法专家-杭州",
+      "负责数字人2.5D",
+      "3D驱动和生成相关算法的研发工作"
+    ],
+    "激光点云算法研究工程师": [
+      "C++",
+      "TensorFlow",
+      "C语言",
+      "<p>任职要求：<",
+      "p>",
+      "<p>1.数学",
+      "<p>2.学历"
+    ],
+    "软件开发工程师（25届实习）": [
+      "Python",
+      "C++",
+      "Java",
+      "Go",
+      "LSTM",
+      "您将从事IT应用层软件",
+      "Devops"
+    ],
+    "-合肥研发中心": [
+      "Go",
+      "PyTorch",
+      "TensorFlow",
+      "CNN",
+      "RNN",
+      "Caffe"
+    ],
+    "ADAS算法开发工程师": [
+      "Python",
+      "C++",
+      "C/C++",
+      "MATLAB",
+      "ADAS算法开发工程师",
+      "C语言"
+    ],
+    "AI云计算工程师（华为正编）": [
+      "Python",
+      "C++",
+      "C/C++",
+      "CUDA",
+      "AI云计算工程师（华为正编）",
+      "AI"
+    ],
+    "AI算法应用工程师": [
+      "Python",
+      "TensorFlow",
+      "Linux",
+      "CNN",
+      "RNN",
+      "AI算法应用工程师"
+    ],
+    "GNSS星基完好性算法专家(J10850)": [
+      "C++",
+      "C/C++",
+      "MATLAB",
+      "GNSS星基完好性算法专家(J10850)",
+      "负责GNSS星基平台完好性的研究和开发",
+      "SSR完好性监测服务的研发；2"
+    ],
+    "业务拓展经理(消费电子/数据中心/服务器/AI智": [
+      "AI智能算力硬件行业)",
+      "KA大客户",
+      "<div>",
+      "div><div>",
+      "<br><",
+      "div>**主要职责**<br>-"
+    ],
+    "信号处理算法研究": [
+      "C++",
+      "C/C++",
+      "MATLAB",
+      "3.擅长C",
+      "C++语言编程",
+      "熟练使用MATLAB等编程工"
+    ],
+    "图像算法专家": [
+      "PyTorch",
+      "TensorFlow",
+      "OpenCV",
+      "CUDA",
+      "Caffe",
+      "CV计算机视觉图像算法"
+    ],
+    "图计算算法引擎开发工程师": [
+      "Python",
+      "C++",
+      "C/C++",
+      "Java",
+      "Go",
+      "CNN"
+    ],
+    "工业CT物理算法(J12327)": [
+      "C++",
+      "C/C++",
+      "MATLAB",
+      "工业CT物理算法(J12327)",
+      "负责CT校准",
+      "负责完成基于CT重构算法(FDK"
+    ],
+    "算法专家(MJ021651)": [
+      "LLM",
+      "(MJ021651)",
+      "通过LLM和算法提升酒店领域信息的准确性",
+      "采用包括但不限于LLM",
+      "Agent",
+      "Multi-agent"
+    ],
+    "算法实习生（24届）": [
+      "Python",
+      "C++",
+      "Java",
+      "OpenCV",
+      "Linux",
+      "<div>"
+    ],
+    "算法开发工程师（测序）(J11112)": [
+      "Python",
+      "C++",
+      "MATLAB",
+      "OpenCV",
+      "算法开发工程师（测序）(J11112)",
+      "并基于研究成果撰写SCI和专利；4.负责算"
+    ],
+    "算法研发实习生（西安）(MJ001330)": [
+      "Python",
+      "C++",
+      "C/C++",
+      "PyTorch",
+      "TensorFlow",
+      "(MJ001330)"
+    ],
+    "传感器融合算法专家": [
+      "Python",
+      "C++",
+      "C/C++",
+      "Linux",
+      "ROS"
+    ],
+    "图形算法研究员（博士专项）2024届": [
+      "Python",
+      "C++",
+      "C/C++",
+      "MATLAB",
+      "<p>"
+    ],
+    "机器人算法助理研究员(J10138)": [
+      "C++",
+      "MATLAB",
+      "ROS",
+      "机器人算法助理研究员(J10138)",
+      "Matlab"
+    ],
+    "电控软件工程师+电机驱动算法研发": [
+      "Python",
+      "MATLAB",
+      "DSP",
+      "FOC矢量控制",
+      "C语言"
+    ],
+    "算法专家(上海)": [
+      "Python",
+      "C++",
+      "Linux",
+      "Scala",
+      "R语言"
+    ],
+    "算法产品开发": [
+      "Java",
+      "Linux",
+      "Redis",
+      "MySQL",
+      "SQL"
+    ],
+    "量测算法研究": [
+      "Python",
+      "C++",
+      "C/C++",
+      "C语言",
+      "实现基于CPU+GPU异构并行的量测"
+    ],
+    "面向硬件的神经网络算法研究专员": [
+      "Python",
+      "C++",
+      "Linux",
+      "CNN",
+      "RNN"
+    ],
+    "高级算法开发工程师": [
+      "根据需求进行电池SOX（SOC",
+      "SOH",
+      "SOP）算法模块的功能开发",
+      "负责产品SOX（SOC",
+      "SOP）设计开发各阶段中组织和协调管理工作"
+    ],
+    "AI算法专家（Text2SQL）": [
+      "NLP",
+      "AI算法专家（Text2SQL）",
+      "1.AI领域有多年工作经验",
+      "特别是NLP领域有7+年工作经验"
+    ],
+    "AI算法产品经理-剪映CapCut": [
+      "NLP",
+      "AIGC",
+      "AI算法产品经理-剪映CapCut",
+      "CapCut智能化产品的规划和设计工作"
+    ],
+    "AI解决方案专家": [
+      "AI解决方案专家",
+      "AI",
+      "1.负责AI产业洞察和趋势判断",
+      "2.承担AI跨领域市场规划工作"
+    ],
+    "交通算法模型工程师": [
+      "Python",
+      "Java",
+      "CNN",
+      "RNN"
+    ],
+    "决策规划算法开发工程师(MJ000065)": [
+      "C++",
+      "Linux",
+      "ROS",
+      "(MJ000065)"
+    ],
+    "图像算法实习生": [
+      "Python",
+      "PyTorch",
+      "TensorFlow",
+      "OpenCV"
+    ],
+    "图像算法实习生（可转正）": [
+      "Python",
+      "C++",
+      "Java",
+      "<div>"
+    ],
+    "图形算法专家": [
+      "C++",
+      "1.CAM几何引擎的整体架构规划与设计",
+      "C/C++"
+    ],
+    "控制算法高级工程师": [
+      "Python",
+      "C++",
+      "MATLAB",
+      "LQR"
+    ],
+    "智能补货算法": [
+      "Python",
+      "大数据处理框架(Spark",
+      "Hadoop",
+      "Hive)"
+    ],
+    "智能计算软件开发工程师": [
+      "C++",
+      "Linux",
+      "C语言",
+      "Qt项目开发经验"
+    ],
+    "算法/软件工程师": [
+      "Python",
+      "C++",
+      "DSP",
+      "<div>"
+    ],
+    "算法实习生(A110717)": [
+      "算法实习生(A110717)",
+      "AI算法",
+      "设计AI算法应用方案（算法框架",
+      "开发AI算法模型"
+    ],
+    "算法开发": [
+      "Python",
+      "MATLAB",
+      "SLAM",
+      "C语言"
+    ],
+    "算法研发实习生": [
+      "PyTorch",
+      "TensorFlow",
+      "tensorflow",
+      "caffe"
+    ],
+    "算法软件工程师": [
+      "C++",
+      "C/C++",
+      "DSP",
+      "C语言"
+    ],
+    "算法高级工程师-集团总部": [
+      "Python",
+      "C++",
+      "PyTorch",
+      "TensorFlow"
+    ],
+    "计算机老师": [
+      "Python",
+      "C++",
+      "C/C++",
+      "Java"
+    ],
+    "语音信号算法研究员": [
+      "Python",
+      "MATLAB",
+      "C语言",
+      "<p>"
+    ],
+    "音效算法专家": [
+      "C++",
+      "C/C++",
+      "MATLAB",
+      "DSP"
+    ],
+    "饿了么-算法专家-联盟广告": [
+      "C++",
+      "Java",
+      "职位描述：<br>1.",
+      "结合LBS的业务特点"
+    ],
+    "变频算法专家-空调": [
+      "DSP",
+      "FOC算法",
+      "PFC控制原理"
+    ],
+    "大数据算法分析师(J10235)": [
+      "Python",
+      "TensorFlow",
+      "大数据算法分析师(J10235)"
+    ],
+    "数据算法实习生": [
+      "Python",
+      "SQL",
+      "excel"
+    ],
+    "机器人算法专家": [
+      "Python",
+      "C++",
+      "MATLAB"
+    ],
+    "激光雷达软件工程师（工作地：常州）（合肥）": [
+      "Python",
+      "C++",
+      "Linux"
+    ],
+    "算法经理": [
+      "Python",
+      "MATLAB",
+      "Matlab"
+    ],
+    "规控算法实习生": [
+      "C++",
+      "C/C++",
+      "MATLAB"
+    ],
+    "运筹学高级算法专家": [
+      "C++",
+      "Java",
+      "针对制造业APS供应链高级计划与优化排程领域"
+    ],
+    "高级AI算法专家/研究员": [
+      "Transformer",
+      "高级AI算法专家",
+      "AI解决方案设计"
+    ],
+    "4D毫米波算法": [
+      "C++",
+      "4D毫米波算法"
+    ],
+    "AI应用工程师（算法优化）-合肥": [
+      "Python",
+      "AI应用工程师（算法优化）-合肥"
+    ],
+    "TTS算法研究员": [
+      "TTS算法研究员",
+      "TTS"
+    ],
+    "WiFi策略调度算法专家（工作地点：成都、深圳）": [
+      "Linux",
+      "WiFi策略调度算法专家（工作地点：成都"
+    ],
+    "云计算工程师-海口": [
+      "Linux",
+      "Windows"
+    ],
+    "交易算法研究": [
+      "Python",
+      "C++"
+    ],
+    "伺服算法软件工程师(J10902)": [
+      "MATLAB",
+      "伺服算法软件工程师(J10902)"
+    ],
+    "数据算法": [
+      "Python",
+      "MySQL"
+    ],
+    "模拟计算工程师（全职+双休+月入过万）": [
+      "Linux",
+      "VASP软件"
+    ],
+    "水声算法（科大讯飞）": [
+      "C++",
+      "C/C++"
+    ],
+    "激光雷达工程师": [
+      "ZEMAX",
+      "<p>"
+    ],
+    "电子助力制动算法设计工程师（2023届校招）(职": [
+      "负责制动系统应用层算法软件模型MIL",
+      "SIL"
+    ],
+    "算法专家（渲染）": [
+      "C++",
+      "OpenGL"
+    ],
+    "算法现场应用工程师": [
+      "OpenCV",
+      "图像处理库（OpenCV等）"
+    ],
+    "网格算法开发工程师": [
+      "C++",
+      "精通C++编程；"
+    ],
+    "门窗量尺、制图、算料员": [
+      "CAD绘图",
+      "工作内容：<br>1.负责去工地测量尺寸并出门窗"
+    ],
+    "云计算工程师（广西南宁）": [
+      "Linux"
+    ],
+    "多模态算法": [
+      "PyTorch"
+    ],
+    "射频算法软件工程师5414(职位编号：00541": [
+      "DSP"
+    ],
+    "应届生招聘：算法软件工程师": [
+      "<p>"
+    ],
+    "应用算法科学家（北上深武均可）": [
+      "Python"
+    ],
+    "气象雷达信号处理算法设计师": [
+      "DSP"
+    ],
+    "算法研发工程师": [
+      "C++"
+    ],
+    "算法高级工程师": [
+      "LLM"
+    ],
+    "资深汽车电子固件工程师（RGB算法方向）": [
+      "资深汽车电子固件工程师（RGB算法方向）"
+    ],
+    "高级售前工程师（算法方向）": [
+      "负责公司算法（CV方向）产品的规划"
+    ]
+  }
+}

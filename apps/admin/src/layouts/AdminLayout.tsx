@@ -34,8 +34,8 @@ export default function AdminLayout() {
   }
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme="dark" width={220}>
+    <Layout className="admin-shell">
+      <Sider theme="dark" width={220} className="admin-sider">
         <div style={{ color: '#fff', padding: 16, fontFamily: 'Georgia, serif', fontSize: 20 }}>
           律问后台
         </div>
@@ -47,7 +47,7 @@ export default function AdminLayout() {
           items={items}
         />
       </Sider>
-      <Layout>
+      <Layout className="admin-main">
         <Header
           style={{
             background: '#fff',
@@ -55,10 +55,11 @@ export default function AdminLayout() {
             justifyContent: 'space-between',
             alignItems: 'center',
             paddingInline: 24,
+            flexShrink: 0,
           }}
         >
           <Typography.Text type="secondary">
-            法律咨询后台
+            CareerBot 后台
             {me?.display_name || me?.email ? ` · ${me.display_name || me.email}` : ''}
           </Typography.Text>
           <a
@@ -69,7 +70,7 @@ export default function AdminLayout() {
             退出
           </a>
         </Header>
-        <Content style={{ margin: 24 }}>
+        <Content className="admin-content">
           <Outlet />
         </Content>
       </Layout>

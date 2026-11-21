@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -11,6 +13,80 @@ from lawbot.crypto import decrypt_secret
 from lawbot.db.models import LLMProvider
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_LLM_TIMEOUT_SECONDS = 60.0
+_DEFAULT_LLM_STREAM_IDLE_SECONDS = 120.0
+_DEFAULT_LLM_STREAM_MAX_SECONDS = 480.0
+_DEFAULT_LLM_ANSWER_MAX_TOKENS = 800
+_PROFILE_ANSWER_MAX_TOKENS = {
+    "normal": 800,
+    "compact": 500,
+}
+
+
+def _env_float_seconds(name: str, default: float) -> float:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r; using default %s", name, raw, default)
+        return default
+    return max(1.0, value)
+
+
+def get_llm_timeout_seconds() -> float:
+    """Request/connect/first-byte timeout for LiteLLM completion (not whole-stream wall clock)."""
+    return _env_float_seconds("LLM_TIMEOUT_SECONDS", _DEFAULT_LLM_TIMEOUT_SECONDS)
+
+
+def get_llm_stream_idle_seconds() -> float:
+    """Max silence between streamed chunks before truncating."""
+    return _env_float_seconds("LLM_STREAM_IDLE_SECONDS", _DEFAULT_LLM_STREAM_IDLE_SECONDS)
+
+
+def get_llm_stream_max_seconds() -> float:
+    """Hard cap for an entire streamed completion."""
+    return _env_float_seconds("LLM_STREAM_MAX_SECONDS", _DEFAULT_LLM_STREAM_MAX_SECONDS)
+
+
+def get_llm_answer_max_tokens() -> int:
+    """Max tokens for streamed legal answers only (not short classify JSON).
+
+    Precedence: LLM_ANSWER_MAX_TOKENS > LLM_ANSWER_PROFILE (normal=800, compact=500) > 800.
+    """
+    raw = (os.environ.get("LLM_ANSWER_MAX_TOKENS") or "").strip()
+    if raw:
+        try:
+            return max(64, int(raw))
+        except ValueError:
+            logger.warning(
+                "Invalid LLM_ANSWER_MAX_TOKENS=%r; falling back to profile/default",
+                raw,
+            )
+    profile = (os.environ.get("LLM_ANSWER_PROFILE") or "normal").strip().lower()
+    if profile in _PROFILE_ANSWER_MAX_TOKENS:
+        return _PROFILE_ANSWER_MAX_TOKENS[profile]
+    if profile:
+        logger.warning(
+            "Invalid LLM_ANSWER_PROFILE=%r; using default %s",
+            profile,
+            _DEFAULT_LLM_ANSWER_MAX_TOKENS,
+        )
+    return _DEFAULT_LLM_ANSWER_MAX_TOKENS
+
+
+class StreamTruncatedError(Exception):
+    """Raised when a live stream is cut by idle or max timeout after some tokens may have been yielded."""
+
+    def __init__(self, *, kind: str, chars_emitted: int, provider: str = "") -> None:
+        self.kind = kind  # "idle" | "max"
+        self.chars_emitted = int(chars_emitted)
+        self.provider = provider or ""
+        super().__init__(
+            f"stream truncated kind={self.kind} chars={self.chars_emitted} provider={self.provider}"
+        )
 
 
 @dataclass
@@ -119,6 +195,8 @@ def _completion_kwargs(
     credentials: ProviderCredentials,
     system: str | None,
     stream: bool = False,
+    timeout: float | None = None,
+    max_tokens: int | None = None,
 ) -> dict:
     model = _litellm_model_name(credentials.provider.provider, credentials.model)
     kwargs: dict = {
@@ -126,9 +204,12 @@ def _completion_kwargs(
         "messages": _completion_messages(prompt=prompt, system=system),
         "api_key": credentials.api_key,
         "stream": stream,
+        "timeout": timeout if timeout is not None else get_llm_timeout_seconds(),
     }
     if credentials.base_url:
         kwargs["api_base"] = credentials.base_url
+    if max_tokens is not None:
+        kwargs["max_tokens"] = max_tokens
     return kwargs
 
 
@@ -149,10 +230,15 @@ def complete_text(
         return ""
 
     try:
-        resp = litellm.completion(**_completion_kwargs(prompt=prompt, credentials=credentials, system=system))
+        resp = litellm.completion(
+            **_completion_kwargs(prompt=prompt, credentials=credentials, system=system)
+        )
         return resp.choices[0].message.content or ""
     except Exception:
-        logger.exception("LiteLLM completion failed for provider=%s; using mock", credentials.provider.name)
+        logger.exception(
+            "LiteLLM completion failed/timed out for provider=%s; using mock",
+            credentials.provider.name,
+        )
         return ""
 
 
@@ -161,8 +247,14 @@ def complete_text_stream(
     prompt: str,
     credentials: ProviderCredentials | None,
     system: str | None = None,
+    max_tokens: int | None = None,
 ) -> Iterator[str]:
-    """Yield text deltas from LiteLLM stream=True. Empty iterator on failure / no credentials."""
+    """Yield text deltas from LiteLLM stream=True.
+
+    Empty iterator on failure / no credentials.
+    Raises StreamTruncatedError on stream idle or max timeout (partial tokens already yielded).
+    max_tokens defaults to LLM_ANSWER_MAX_TOKENS (answer streams only).
+    """
     if credentials is None:
         return
 
@@ -172,6 +264,18 @@ def complete_text_stream(
         logger.warning("litellm not installed; falling back to mock stream")
         return
 
+    req_timeout = get_llm_timeout_seconds()
+    idle_seconds = get_llm_stream_idle_seconds()
+    max_seconds = get_llm_stream_max_seconds()
+    answer_max_tokens = (
+        max_tokens if max_tokens is not None else get_llm_answer_max_tokens()
+    )
+    provider_name = credentials.provider.name
+    started = time.monotonic()
+    max_deadline = started + max_seconds
+    idle_deadline = started + idle_seconds
+    chars_emitted = 0
+
     try:
         stream = litellm.completion(
             **_completion_kwargs(
@@ -179,20 +283,47 @@ def complete_text_stream(
                 credentials=credentials,
                 system=system,
                 stream=True,
+                timeout=req_timeout,
+                max_tokens=answer_max_tokens,
             )
         )
         for chunk in stream:
+            now = time.monotonic()
+            if now > max_deadline:
+                logger.warning(
+                    "LiteLLM stream truncated kind=max max_seconds=%.0f provider=%s chars_emitted=%s",
+                    max_seconds,
+                    provider_name,
+                    chars_emitted,
+                )
+                raise StreamTruncatedError(
+                    kind="max", chars_emitted=chars_emitted, provider=provider_name
+                )
+            if now > idle_deadline:
+                logger.warning(
+                    "LiteLLM stream truncated kind=idle idle_seconds=%.0f provider=%s chars_emitted=%s",
+                    idle_seconds,
+                    provider_name,
+                    chars_emitted,
+                )
+                raise StreamTruncatedError(
+                    kind="idle", chars_emitted=chars_emitted, provider=provider_name
+                )
             choices = getattr(chunk, "choices", None) or []
             if not choices:
                 continue
             delta = getattr(choices[0], "delta", None)
             text = getattr(delta, "content", None) if delta is not None else None
             if text:
+                chars_emitted += len(text)
+                idle_deadline = time.monotonic() + idle_seconds
                 yield text
+    except StreamTruncatedError:
+        raise
     except Exception:
         logger.exception(
-            "LiteLLM stream failed for provider=%s; falling back to mock",
-            credentials.provider.name,
+            "LiteLLM stream failed/timed out for provider=%s; falling back to mock",
+            provider_name,
         )
         return
 
@@ -289,6 +420,7 @@ def test_provider_connectivity(
         "messages": [{"role": "user", "content": "ping"}],
         "api_key": api_key,
         "max_tokens": 5,
+        "timeout": get_llm_timeout_seconds(),
     }
     if base_url:
         kwargs["api_base"] = base_url

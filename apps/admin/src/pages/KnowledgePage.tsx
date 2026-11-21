@@ -203,8 +203,17 @@ function DocumentsTab() {
   )
 }
 
+const IMPORT_SOURCES = [
+  { value: 'interview_zh', label: 'A · interview_zh → interview_qa' },
+  { value: 'dev_docs_en', label: 'B · dev_docs_en → tech_docs' },
+  { value: 'hive_corpus', label: 'C · hive_corpus → gotchas' },
+  { value: 'cmmlu_cs', label: 'D · cmmlu_cs → self_test（隔离目录）' },
+  { value: 'ai_job_zh', label: 'E · ai_job_zh → job_skills' },
+] as const
+
 function ImportJobsTab() {
   const [maxRows, setMaxRows] = useState<number | null>(500)
+  const [importSource, setImportSource] = useState<string>('interview_zh')
   const qc = useQueryClient()
   const { hasPermission } = useAuth()
   const canImport = hasPermission('knowledge:import')
@@ -223,9 +232,15 @@ function ImportJobsTab() {
 
   const createJob = useMutation({
     mutationFn: async () => {
-      const body: { config?: { max_rows: number } } = {}
-      if (maxRows != null) body.config = { max_rows: maxRows }
-      return api.post('/api/admin/knowledge-import-jobs', body)
+      const config: Record<string, unknown> = { source: importSource }
+      if (maxRows != null) config.max_rows = maxRows
+      if (importSource === 'cmmlu_cs') {
+        config.memory_dir = 'data/rag_memory_self_test'
+      }
+      return api.post('/api/admin/knowledge-import-jobs', {
+        source: `career:${importSource}`,
+        config,
+      })
     },
     onSuccess: () => {
       message.success('已创建导入任务')
@@ -245,6 +260,13 @@ function ImportJobsTab() {
     <div>
       {canImport ? (
         <Space style={{ marginBottom: 16 }} wrap>
+          <span>source</span>
+          <Select
+            style={{ minWidth: 280 }}
+            value={importSource}
+            options={[...IMPORT_SOURCES]}
+            onChange={(v) => setImportSource(v)}
+          />
           <span>max_rows</span>
           <InputNumber
             min={0}
@@ -255,6 +277,9 @@ function ImportJobsTab() {
           <Button type="primary" loading={createJob.isPending} onClick={() => createJob.mutate()}>
             触发导入
           </Button>
+          <span style={{ color: '#888', fontSize: 12 }}>
+            D 写入 RAG_SELF_TEST_DIR；主库 search_kb 永不查 self_test
+          </span>
         </Space>
       ) : (
         <div style={{ marginBottom: 16, color: '#888' }}>当前账号无知识导入权限</div>
@@ -334,7 +359,7 @@ function SearchTab() {
         <Input
           style={{ width: 320 }}
           value={q}
-          placeholder="试检索法规条文…"
+          placeholder="试检索面试/技术知识点…"
           onChange={(e) => setQ(e.target.value)}
           onPressEnter={onSearch}
         />
@@ -348,7 +373,7 @@ function SearchTab() {
         loading={isFetching}
         dataSource={data?.results || []}
         columns={[
-          { title: '法律名称', dataIndex: 'law_name', width: 180 },
+          { title: '标题/知识点', dataIndex: 'law_name', width: 180 },
           { title: '条款', dataIndex: 'article_no', width: 100 },
           { title: '正文', dataIndex: 'text', ellipsis: true },
           { title: 'source_id', dataIndex: 'source_id', width: 140 },

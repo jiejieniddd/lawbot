@@ -28,6 +28,16 @@ from lawbot.rbac.seed import seed_rbac_catalog
 from lawbot.rbac.service import ensure_user_has_role
 from lawbot.security import hash_password
 
+# Re-export OTP fixtures/helpers for tests: `from otp_helpers import ...` or conftest discovery
+from otp_helpers import (  # noqa: E402,F401
+    code_from,
+    login_user,
+    memory_redis,
+    otp_mail,
+    register_user,
+    seed_mail_enabled,
+)
+
 get_settings.cache_clear()
 get_engine.cache_clear()
 get_sessionmaker.cache_clear()

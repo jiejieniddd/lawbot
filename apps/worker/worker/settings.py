@@ -13,13 +13,17 @@ class WorkerSettings(BaseSettings):
     worker_poll_seconds: int = 5
     import_max_rows: int = Field(default=200, validation_alias=AliasChoices("IMPORT_MAX_ROWS", "import_max_rows"))
     hf_dataset_id: str = Field(
-        default="senry5433/china-effective-laws-regulations",
+        default="data/hf/Chinese_interview_large",
         validation_alias=AliasChoices("HF_DATASET_ID", "hf_dataset_id"),
     )
     index_backend: str = Field(default="memory", validation_alias=AliasChoices("INDEX_BACKEND", "index_backend"))
     rag_memory_dir: str = Field(
         default="data/rag_memory",
         validation_alias=AliasChoices("RAG_MEMORY_DIR", "rag_memory_dir"),
+    )
+    rag_self_test_dir: str = Field(
+        default="data/rag_memory_self_test",
+        validation_alias=AliasChoices("RAG_SELF_TEST_DIR", "rag_self_test_dir"),
     )
     qdrant_url: str = Field(default="http://localhost:6333", validation_alias=AliasChoices("QDRANT_URL"))
     opensearch_url: str = Field(default="http://localhost:9200", validation_alias=AliasChoices("OPENSEARCH_URL"))

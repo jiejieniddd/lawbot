@@ -40,6 +40,10 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("LITELLM_API_KEY", "LLM_API_KEY", "litellm_api_key"),
     )
+    llm_timeout_seconds: float = Field(
+        default=60.0,
+        validation_alias=AliasChoices("LLM_TIMEOUT_SECONDS", "llm_timeout_seconds"),
+    )
     encryption_key: str = Field(
         default="",
         validation_alias=AliasChoices("ENCRYPTION_KEY", "encryption_key"),
@@ -89,7 +93,7 @@ class Settings(BaseSettings):
     )
     import_max_rows: int = Field(default=200, validation_alias=AliasChoices("IMPORT_MAX_ROWS"))
     hf_dataset_id: str = Field(
-        default="senry5433/china-effective-laws-regulations",
+        default="data/hf/Chinese_interview_large",
         validation_alias=AliasChoices("HF_DATASET_ID"),
     )
     embedding_model: str = Field(default="", validation_alias=AliasChoices("EMBEDDING_MODEL"))
@@ -100,6 +104,26 @@ class Settings(BaseSettings):
 
     upload_dir: str = Field(default="data/uploads/avatars", validation_alias=AliasChoices("UPLOAD_DIR"))
     avatar_max_bytes: int = Field(default=2_097_152, validation_alias=AliasChoices("AVATAR_MAX_BYTES"))
+    resume_upload_dir: str = Field(
+        default="data/uploads/resumes",
+        validation_alias=AliasChoices("RESUME_UPLOAD_DIR", "resume_upload_dir"),
+    )
+    resume_max_bytes: int = Field(
+        default=8_388_608,
+        validation_alias=AliasChoices("RESUME_MAX_BYTES", "resume_max_bytes"),
+    )
+    jd_upload_dir: str = Field(
+        default="data/uploads/jds",
+        validation_alias=AliasChoices("JD_UPLOAD_DIR", "jd_upload_dir"),
+    )
+    jd_max_bytes: int = Field(
+        default=8_388_608,
+        validation_alias=AliasChoices("JD_MAX_BYTES", "jd_max_bytes"),
+    )
+    rag_self_test_dir: str = Field(
+        default="data/rag_memory_self_test",
+        validation_alias=AliasChoices("RAG_SELF_TEST_DIR", "rag_self_test_dir"),
+    )
 
     # Mail / password reset. Used only when mail_settings has no saved row.
     mail_enabled: bool = Field(default=False, validation_alias=AliasChoices("MAIL_ENABLED", "mail_enabled"))
@@ -127,6 +151,12 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def resolved_rag_memory_dir(self) -> str:
+        from lawbot.paths import resolve_rag_memory_dir
+
+        return str(resolve_rag_memory_dir(self.rag_memory_dir))
 
 
 @lru_cache

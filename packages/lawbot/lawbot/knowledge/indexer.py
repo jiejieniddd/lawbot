@@ -3,14 +3,15 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
+from lawbot.knowledge.chunk import KnowledgeChunk
 from lawbot.knowledge.embedder import embed_texts
 from lawbot.knowledge.hf_import import (
-    ALLOWED_CATEGORIES,
     DEFAULT_DATASET,
     DEFAULT_SUBSET,
-    ArticleRecord,
-    iter_filtered_articles,
+    iter_knowledge_chunks,
 )
+from lawbot.knowledge.importers import SOURCE_DEFAULT_DATASET, SOURCE_DOMAIN
+from lawbot.paths import resolve_rag_memory_dir
 from lawbot.rag.factory import DEFAULT_MEMORY_DIR, get_memory_stores
 from lawbot.rag.memory_persist import save_memory_index
 from lawbot.rag.memory_store import InMemoryBM25Store, InMemoryVectorStore
@@ -25,9 +26,11 @@ IndexBackend = Literal["memory", "qdrant"]
 def run_import(
     *,
     max_rows: int = 500,
-    dataset_id: str = DEFAULT_DATASET,
+    dataset_id: str | None = None,
     subset: str = DEFAULT_SUBSET,
-    categories: frozenset[str] = ALLOWED_CATEGORIES,
+    source: str = "interview_zh",
+    domain: str | None = None,
+    allowlist: list[str] | None = None,
     qdrant_url: str = "http://localhost:6333",
     opensearch_url: str = "http://localhost:9200",
     collection: str = "lawbot_articles_v1",
@@ -45,8 +48,11 @@ def run_import(
     use_memory: bool | None = None,
     index_backend: IndexBackend | str | None = None,
     memory_dir: str = DEFAULT_MEMORY_DIR,
+    # legacy unused kwargs kept for call-site compatibility
+    categories: Any = None,
 ) -> dict[str, Any]:
-    """Import filtered HF articles into memory disk index or Qdrant (+ optional OpenSearch)."""
+    """Import knowledge chunks into memory disk index or Qdrant (+ optional OpenSearch)."""
+    _ = categories
     backend: str
     if index_backend is not None:
         backend = str(index_backend).lower()
@@ -60,9 +66,14 @@ def run_import(
     if backend not in ("memory", "qdrant"):
         raise ValueError(f"unsupported index_backend={backend!r}")
 
+    src = (source or "interview_zh").strip()
+    resolved_dataset = (dataset_id or SOURCE_DEFAULT_DATASET.get(src) or DEFAULT_DATASET).strip()
+    resolved_domain = (domain or SOURCE_DOMAIN.get(src) or "").strip() or None
+    resolved_memory_dir = str(resolve_rag_memory_dir(memory_dir))
+
     read = 0
     indexed = 0
-    batch: list[ArticleRecord] = []
+    batch: list[KnowledgeChunk] = []
     opensearch_status = "skipped"
 
     qdrant: QdrantArticleStore | None = None
@@ -71,6 +82,7 @@ def run_import(
     mem_bm25 = memory_bm25
 
     if backend == "memory":
+        memory_dir = resolved_memory_dir
         if mem_vec is None or mem_bm25 is None:
             mem_vec, mem_bm25 = get_memory_stores()
             if recreate:
@@ -88,7 +100,7 @@ def run_import(
             opensearch_status = "degraded"
             os_store = None
 
-    def flush(recs: list[ArticleRecord]) -> None:
+    def flush(recs: list[KnowledgeChunk]) -> None:
         nonlocal indexed, opensearch_status, os_store
         if not recs:
             return
@@ -116,13 +128,33 @@ def run_import(
                     os_store = None
         indexed += len(recs)
 
-    for rec in iter_filtered_articles(
-        dataset_id=dataset_id,
-        subset=subset,
-        max_rows=max_rows,
-        categories=categories,
-        rows=rows,
-    ):
+    # Legacy law-shaped test rows → KnowledgeChunk without HF importers.
+    legacy_rows = bool(
+        rows
+        and isinstance(rows[0], dict)
+        and "instruction" not in rows[0]
+        and ("article_no_cn" in rows[0] or rows[0].get("status") == "有效")
+    )
+    if legacy_rows:
+        from lawbot.knowledge.hf_import import iter_filtered_articles
+
+        chunk_iter = (
+            KnowledgeChunk.from_legacy_dict(rec.model_dump())
+            for rec in iter_filtered_articles(rows=rows, max_rows=max_rows)
+        )
+    else:
+        chunk_iter = iter_knowledge_chunks(
+            source=src,
+            dataset_id=resolved_dataset,
+            subset=subset,
+            max_rows=max_rows,
+            allowlist=allowlist,
+            rows=rows,
+        )
+
+    for rec in chunk_iter:
+        if resolved_domain and not rec.domain:
+            rec.domain = resolved_domain
         read += 1
         batch.append(rec)
         if len(batch) >= batch_size:
@@ -141,6 +173,9 @@ def run_import(
         "indexed": indexed,
         "skipped": 0,
         "backend": backend,
+        "source": src,
+        "domain": resolved_domain,
+        "dataset_id": resolved_dataset,
         "opensearch": opensearch_status,
         "memory_dir": memory_dir if backend == "memory" else None,
     }

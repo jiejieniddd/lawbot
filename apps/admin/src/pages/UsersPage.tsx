@@ -3,6 +3,7 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Switch,
@@ -135,6 +136,21 @@ export default function UsersPage({ mode }: { mode: 'clients' | 'admins' }) {
     },
   })
 
+  const removeClient = useMutation({
+    mutationFn: async (id: string) => api.delete(`/api/admin/users/${id}`),
+    onSuccess: () => {
+      message.success('已删除用户')
+      qc.invalidateQueries({ queryKey: ['users', 'user'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+    },
+    onError: (err: unknown) => {
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        '删除失败'
+      message.error(typeof detail === 'string' ? detail : '删除失败')
+    },
+  })
+
   const showCreate =
     (mode === 'clients' && hasPermission('user:create')) ||
     (mode === 'admins' && hasPermission('admin:manage'))
@@ -214,8 +230,28 @@ export default function UsersPage({ mode }: { mode: 'clients' | 'admins' }) {
           ),
       })
     }
+    if (mode === 'clients' && hasPermission('user:delete')) {
+      base.push({
+        title: '操作',
+        width: 100,
+        render: (_, row) => (
+          <Popconfirm
+            title="确认硬删除该用户？"
+            description="此操作不可恢复，其会话与消息将一并删除。"
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true, loading: removeClient.isPending }}
+            onConfirm={() => removeClient.mutate(row.id)}
+          >
+            <Button size="small" danger>
+              删除
+            </Button>
+          </Popconfirm>
+        ),
+      })
+    }
     return base
-  }, [mode, meId, isSuperAdmin, patch, hasPermission])
+  }, [mode, meId, isSuperAdmin, patch, removeClient, hasPermission])
 
   return (
     <div>

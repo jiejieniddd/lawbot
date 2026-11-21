@@ -7,12 +7,12 @@ def _admin_headers(client, admin_user):
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
-def test_user_forbidden_on_llm_providers(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "u_llm01@example.com", "password": "secret12"},
-    )
-    token = reg.json()["access_token"]
+from otp_helpers import register_user
+
+
+def test_user_forbidden_on_llm_providers(client, otp_mail):
+    reg = register_user(client, otp_mail, "u_llm01@example.com")
+    token = reg["access_token"]
     resp = client.get(
         "/api/admin/llm-providers",
         headers={"Authorization": f"Bearer {token}"},

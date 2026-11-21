@@ -59,6 +59,24 @@ class UserPreference(Base):
     user: Mapped[User] = relationship(back_populates="preference")
 
 
+class UserLongMemory(Base):
+    """Cross-conversation user facts for MemoryStore (not law RAG)."""
+
+    __tablename__ = "user_long_memories"
+    __table_args__ = (Index("ix_user_long_memories_user_updated", "user_id", "updated_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    mem_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    text: Mapped[str] = mapped_column(String(1000), nullable=False)
+    mem_type: Mapped[str] = mapped_column(String(32), nullable=False, default="case_fact")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Permission(Base):
     __tablename__ = "permissions"
 
@@ -247,6 +265,23 @@ class MailSettings(Base):
     )
 
 
+class EmbeddingSettings(Base):
+    """Singleton vector-embedding config. Row id is always 1. Not chat LLM / not tokenizer."""
+
+    __tablename__ = "embedding_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False, default="auto")
+    embedding_model: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    api_key_encrypted: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    api_base: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    embedding_dim: Mapped[int] = mapped_column(Integer, nullable=False, default=384)
+    reuse_llm_provider: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class KnowledgeImportJob(Base):
     __tablename__ = "knowledge_import_jobs"
 
@@ -256,6 +291,56 @@ class KnowledgeImportJob(Base):
     config: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
     stats: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class UserResume(Base):
+    """Per-user uploaded resume (CareerBot). File on disk; structured JSON after parse."""
+
+    __tablename__ = "user_resumes"
+    __table_args__ = (Index("ix_user_resumes_user_active", "user_id", "is_active"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    mime: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    parse_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    structured: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class UserJd(Base):
+    """Per-user uploaded job description (CareerBot Phase3)."""
+
+    __tablename__ = "user_jds"
+    __table_args__ = (Index("ix_user_jds_user_active", "user_id", "is_active"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    mime: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    parse_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    structured: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

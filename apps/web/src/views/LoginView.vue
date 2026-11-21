@@ -1,24 +1,99 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { AUTH_FOOTER_DISCLAIMER } from '../constants/disclaimer'
 import { useAuthStore } from '../stores/auth'
+import '../styles/auth.css'
 
+type LoginMode = 'password' | 'email_code'
+
+const mode = ref<LoginMode>('password')
 const account = ref('')
 const password = ref('')
+const code = ref('')
 const loading = ref(false)
+const sending = ref(false)
+const cooldown = ref(0)
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
+let timer: number | null = null
+
+const lead = computed(() =>
+  mode.value === 'password' ? '用邮箱和密码登录' : '用邮箱验证码登录',
+)
+
+function isEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+}
+
+function startCooldown(seconds: number) {
+  cooldown.value = Math.max(1, seconds)
+  if (timer != null) window.clearInterval(timer)
+  timer = window.setInterval(() => {
+    cooldown.value -= 1
+    if (cooldown.value <= 0 && timer != null) {
+      window.clearInterval(timer)
+      timer = null
+    }
+  }, 1000)
+}
+
+watch(mode, (next) => {
+  if (next === 'password') {
+    code.value = ''
+  } else {
+    password.value = ''
+  }
+})
+
+onUnmounted(() => {
+  if (timer != null) window.clearInterval(timer)
+})
+
+async function sendCode() {
+  if (!isEmail(account.value)) {
+    ElMessage.error('请输入有效邮箱')
+    return
+  }
+  sending.value = true
+  try {
+    const data = await auth.sendLoginCode(account.value.trim())
+    ElMessage.success(data.detail)
+    startCooldown(data.retry_after_seconds || 60)
+  } catch (e) {
+    ElMessage.error((e as Error).message || '请求失败')
+  } finally {
+    sending.value = false
+  }
+}
+
 async function onSubmit() {
+  if (!isEmail(account.value)) {
+    ElMessage.error('请输入有效邮箱')
+    return
+  }
+  if (mode.value === 'password') {
+    if (!password.value || password.value.length < 6) {
+      ElMessage.error('请输入密码')
+      return
+    }
+  } else if (!/^\d{6}$/.test(code.value.trim())) {
+    ElMessage.error('请输入 6 位验证码')
+    return
+  }
   loading.value = true
   try {
-    await auth.login(account.value, password.value)
+    if (mode.value === 'password') {
+      await auth.loginPassword(account.value.trim(), password.value)
+    } else {
+      await auth.loginWithCode(account.value.trim(), code.value.trim())
+    }
     router.push((route.query.redirect as string) || '/chat')
   } catch (e) {
-    ElMessage.error((e as Error).message || '账号或密码错误')
+    ElMessage.error((e as Error).message || '登录失败')
   } finally {
     loading.value = false
   }
@@ -27,26 +102,39 @@ async function onSubmit() {
 
 <template>
   <div class="auth-shell">
-    <aside class="brand-pane" aria-label="LawBot">
-      <div class="brand-mark">LawBot</div>
-      <p class="brand-line">结构化法律咨询</p>
-      <p class="brand-note">冷静、可追溯的问答工作台。回答仅供参考，不构成正式法律意见。</p>
+    <aside class="brand-pane" aria-label="CareerBot">
+      <div class="brand-mark">CareerBot</div>
+      <p class="brand-line">计算机求职助手</p>
+      <p class="brand-note">面试答疑与就业方向辅导。回答仅供参考，不构成录用承诺。</p>
     </aside>
     <section class="form-pane">
       <div class="form-block">
+        <div class="sticker-row" aria-hidden="true">
+          <span class="sticker coral" />
+          <span class="sticker mint" />
+          <span class="sticker sunny" />
+        </div>
         <h1>登录</h1>
-        <p class="lead">使用账号进入咨询工作台</p>
+        <p class="lead">{{ lead }}</p>
+        <el-segmented
+          v-model="mode"
+          class="mode-switch"
+          :options="[
+            { label: '密码登录', value: 'password' },
+            { label: '验证码登录', value: 'email_code' },
+          ]"
+        />
         <el-form class="auth-form" label-position="top" @submit.prevent="onSubmit">
           <el-form-item label="邮箱">
             <el-input
               v-model="account"
-              type="text"
+              type="email"
               autocomplete="username"
               size="large"
               placeholder="请输入邮箱"
             />
           </el-form-item>
-          <el-form-item label="密码">
+          <el-form-item v-if="mode === 'password'" label="密码">
             <el-input
               v-model="password"
               type="password"
@@ -54,6 +142,27 @@ async function onSubmit() {
               show-password
               size="large"
             />
+          </el-form-item>
+          <el-form-item v-else label="验证码">
+            <div class="code-row">
+              <el-input
+                v-model="code"
+                inputmode="numeric"
+                maxlength="6"
+                autocomplete="one-time-code"
+                size="large"
+                placeholder="6 位数字"
+              />
+              <el-button
+                native-type="button"
+                size="large"
+                :loading="sending"
+                :disabled="cooldown > 0"
+                @click="sendCode"
+              >
+                {{ cooldown > 0 ? `${cooldown}s` : '获取验证码' }}
+              </el-button>
+            </div>
           </el-form-item>
           <el-button
             type="primary"
@@ -79,124 +188,29 @@ async function onSubmit() {
 </template>
 
 <style scoped>
-.auth-shell {
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: grid;
-  grid-template-columns: minmax(280px, 0.42fr) minmax(320px, 0.58fr);
-  background: var(--bg);
-}
-
-.brand-pane {
-  background: linear-gradient(
-    165deg,
-    color-mix(in srgb, var(--color-primary) 88%, #1a2332) 0%,
-    var(--color-primary) 55%,
-    color-mix(in srgb, var(--color-info) 55%, var(--color-primary)) 100%
-  );
-  color: #fff;
-  padding: clamp(2rem, 6vw, 3.5rem);
+.sticker-row {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.75rem;
-  animation: brand-in 0.55s ease-out both;
+  gap: 8px;
+  margin-bottom: 16px;
+  transform: rotate(-2deg);
+  width: fit-content;
 }
 
-.brand-mark {
-  font-family: var(--font-ui);
-  font-size: var(--fs-brand);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
+.sticker {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-ink);
 }
 
-.brand-line {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 500;
-  opacity: 0.95;
+.sticker.coral {
+  background: var(--color-coral);
 }
 
-.brand-note {
-  margin: 0.5rem 0 0;
-  max-width: 28ch;
-  font-size: var(--fs-small);
-  line-height: 1.55;
-  opacity: 0.82;
+.sticker.mint {
+  background: var(--color-mint);
 }
 
-.form-pane {
-  display: grid;
-  place-items: center;
-  padding: 2rem 1.25rem;
-  background: var(--surface);
-}
-
-.form-block {
-  width: min(400px, 100%);
-}
-
-h1 {
-  margin: 0;
-  font-family: var(--font-ui);
-  font-size: var(--fs-title);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.lead {
-  margin: 0.35rem 0 1.35rem;
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
-.submit {
-  width: 100%;
-  margin-top: 0.25rem;
-}
-
-.hint {
-  margin-top: 1.1rem;
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
-.foot-note {
-  margin-top: 1.25rem;
-  font-size: var(--fs-fine);
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-@keyframes brand-in {
-  from {
-    opacity: 0;
-    transform: translateX(-12px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .brand-pane {
-    animation: none;
-  }
-}
-
-@media (max-width: 840px) {
-  .auth-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-  }
-  .brand-pane {
-    padding: 1.5rem 1.25rem;
-    min-height: auto;
-  }
-  .brand-note {
-    display: none;
-  }
+.sticker.sunny {
+  background: var(--color-sunny);
 }
 </style>

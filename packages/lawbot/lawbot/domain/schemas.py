@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from lawbot.accounts import normalize_account, validate_email_account, validate_new_account
 
@@ -58,8 +58,8 @@ class DocStatus(StrEnum):
 
 
 class Citation(BaseModel):
-    law_name: str
-    article_no: str
+    law_name: str  # CareerBot: maps from KnowledgeChunk.title
+    article_no: str  # CareerBot: maps from category / section label
     text: str
     source_id: str
     effective_date: str | None = None
@@ -67,13 +67,17 @@ class Citation(BaseModel):
     category: str | None = None
     jurisdiction: str | None = None
     source_url: str | None = None
+    domain: str | None = None
 
 
 LEGAL_DISCLAIMER = (
-    "本回复仅供参考，不构成正式法律意见。如需正式意见请咨询执业律师。"
-    "检索所依据的法规条文来自第三方整理的数据集，非国家官方汇编、非权威发布渠道，"
-    "请以全国人大等官方来源为准。"
+    "本回复仅供参考，不构成正式职业建议或录用承诺。"
+    "检索内容来自第三方整理的面试/技术资料，可能过时或不完整，"
+    "请结合官方文档、岗位 JD 与自身情况判断；重要决策请咨询职业导师或学校就业指导。"
 )
+
+# Alias for CareerBot branding (same text as LEGAL_DISCLAIMER during transition).
+CAREER_DISCLAIMER = LEGAL_DISCLAIMER
 
 
 class LLMProviderKind(StrEnum):
@@ -129,7 +133,7 @@ class LLMProviderOut(BaseModel):
 
 
 class KnowledgeImportJobCreate(BaseModel):
-    source: str = Field(default="hf:china-effective-laws-regulations", max_length=200)
+    source: str = Field(default="hf:chinese_interview_large", max_length=200)
     config: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -147,7 +151,7 @@ class KnowledgeImportJobOut(BaseModel):
 
 
 class ChatEvent(BaseModel):
-    type: Literal["token", "citation", "done", "error"]
+    type: Literal["token", "citation", "done", "error", "status"]
     data: dict[str, Any]
     request_id: str
 
@@ -158,6 +162,14 @@ class ChatEvent(BaseModel):
     @classmethod
     def citation(cls, request_id: str, citation: Citation) -> ChatEvent:
         return cls(type="citation", data=citation.model_dump(), request_id=request_id)
+
+    @classmethod
+    def status(cls, request_id: str, stage: str, message: str) -> ChatEvent:
+        return cls(
+            type="status",
+            data={"stage": stage, "message": message},
+            request_id=request_id,
+        )
 
     @classmethod
     def done(
@@ -193,6 +205,7 @@ class TokenPayload(BaseModel):
 class RegisterRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255, description="登录邮箱")
     password: str = Field(min_length=6, max_length=128)
+    code: str = Field(min_length=1, max_length=32, description="邮箱验证码")
     display_name: str | None = Field(default=None, max_length=100)
 
     @field_validator("email")
@@ -202,6 +215,39 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    """C-end login: mutually exclusive password or email OTP (mode)."""
+
+    mode: Literal["password", "email_code"]
+    email: str
+    password: str | None = Field(default=None, max_length=128)
+    code: str | None = Field(default=None, max_length=32, description="邮箱验证码")
+
+    @field_validator("email")
+    @classmethod
+    def _normalize_login_account(cls, v: str) -> str:
+        # C-end routes enforce email shape with a Chinese guide message (400).
+        return normalize_account(v)
+
+    @model_validator(mode="after")
+    def _require_mode_credentials(self) -> LoginRequest:
+        if self.mode == "password":
+            pw = (self.password or "").strip()
+            if len(pw) < 6:
+                raise ValueError("password required for password login")
+            self.password = pw
+            self.code = None
+            return self
+        code = (self.code or "").strip()
+        if not code.isdigit() or len(code) != 6:
+            raise ValueError("code must be a 6-digit email OTP")
+        self.code = code
+        self.password = None
+        return self
+
+
+class AdminLoginRequest(BaseModel):
+    """Admin console login (no email OTP)."""
+
     email: str
     password: str
 
@@ -325,6 +371,7 @@ class ProfileUpdate(BaseModel):
 class PasswordChange(BaseModel):
     old_password: str = Field(min_length=1, max_length=128)
     new_password: str = Field(min_length=6, max_length=128)
+    code: str = Field(min_length=1, max_length=32, description="邮箱验证码")
 
 
 class ConversationCreate(BaseModel):
@@ -401,3 +448,17 @@ class StatsOverview(BaseModel):
     conversations: int
     messages: int
     knowledge_documents: int
+
+
+class StatsSeriesPoint(BaseModel):
+    date: str  # YYYY-MM-DD (UTC calendar day)
+    new_end_users: int = 0
+    new_conversations: int = 0
+    new_messages: int = 0
+
+
+class StatsSeries(BaseModel):
+    days: int
+    bucket: Literal["day"] = "day"
+    timezone: Literal["UTC"] = "UTC"
+    points: list[StatsSeriesPoint]

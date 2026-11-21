@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.deps import get_current_user, get_db
+from lawbot.agent.checkpoint import delete_thread_checkpoints
 from lawbot.db.models import Conversation, Message, User
 from lawbot.domain.schemas import ConversationCreate, ConversationOut, MessageOut
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["v1-conversations"])
 
@@ -66,3 +71,21 @@ def list_messages(
         .order_by(Message.created_at.asc())
     ).all()
     return list(rows)
+
+
+@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_conversation(
+    conversation_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    conv = db.get(Conversation, conversation_id)
+    if conv is None or conv.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
+    db.delete(conv)
+    db.commit()
+    try:
+        delete_thread_checkpoints(get_settings().database_url, str(conversation_id))
+    except Exception:
+        logger.exception("Failed to clear checkpointer for conversation %s", conversation_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

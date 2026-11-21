@@ -229,8 +229,9 @@ def test_knowledge_import_job_create_and_get(client, admin_user):
     body = created.json()
     assert body["status"] == "pending"
     assert body["config"]["max_rows"] == 200
-    assert body["config"]["subset"] == "articles"
-    assert "法律" in body["config"]["categories"]
+    assert body["config"]["subset"] == "train"
+    assert body["config"].get("source") == "interview_zh"
+    assert body["config"].get("domain") == "interview_qa"
     job_id = body["id"]
     got = client.get(f"/api/admin/knowledge-import-jobs/{job_id}", headers=headers)
     assert got.status_code == 200

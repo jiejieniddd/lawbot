@@ -21,6 +21,7 @@ PERMISSION_DEFS: list[PermissionDef] = [
     {"code": "user:list", "name": "查看用户", "module": "user", "description": "列出 C 端用户"},
     {"code": "user:create", "name": "创建用户", "module": "user", "description": "创建 C 端用户"},
     {"code": "user:disable", "name": "禁用用户", "module": "user", "description": "启用/禁用用户"},
+    {"code": "user:delete", "name": "删除用户", "module": "user", "description": "硬删除 C 端用户及其会话"},
     {"code": "admin:manage", "name": "管理管理员", "module": "admin", "description": "创建/管理普通管理员"},
     {"code": "role:manage", "name": "角色管理", "module": "role", "description": "管理角色与权限"},
     {"code": "knowledge:read", "name": "知识库只读", "module": "knowledge", "description": "查看文档与试检索"},

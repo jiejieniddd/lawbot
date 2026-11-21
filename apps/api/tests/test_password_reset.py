@@ -1,80 +1,15 @@
 from __future__ import annotations
 
-import re
-
-import pytest
-
 from app.config import get_settings
 from app.services.mailer import MailDeliveryError
 from lawbot.crypto import decrypt_secret
 from lawbot.db.models import MailSettings, User
+from otp_helpers import code_from, login_user, register_user
 
 SENT_MESSAGE = "若该邮箱已注册，验证码已发送"
-INVALID_CODE = "验证码无效或已过期"
-_CODE_RE = re.compile(r"验证码是 (\d{6})")
-
-
-class MemoryRedis:
-    def __init__(self) -> None:
-        self.values: dict[str, str] = {}
-        self.expire_at: dict[str, float | None] = {}
-        self.now = 0.0
-
-    def _alive(self, key: str) -> bool:
-        if key not in self.values:
-            return False
-        exp = self.expire_at.get(key)
-        if exp is not None and self.now >= exp:
-            self.values.pop(key, None)
-            self.expire_at.pop(key, None)
-            return False
-        return True
-
-    def set(self, name: str, value: str, ex: int | None = None):
-        self.values[name] = str(value)
-        self.expire_at[name] = self.now + ex if ex else None
-        return True
-
-    def get(self, name: str):
-        if not self._alive(name):
-            return None
-        return self.values[name]
-
-    def delete(self, *names: str) -> int:
-        count = 0
-        for name in names:
-            if name in self.values:
-                count += 1
-            self.values.pop(name, None)
-            self.expire_at.pop(name, None)
-        return count
-
-    def ttl(self, name: str) -> int:
-        if not self._alive(name):
-            return -2
-        exp = self.expire_at.get(name)
-        if exp is None:
-            return -1
-        return max(0, int(exp - self.now))
-
-
-@pytest.fixture()
-def memory_redis(monkeypatch):
-    fake = MemoryRedis()
-    monkeypatch.setattr("app.services.auth_challenges.get_redis", lambda: fake)
-    return fake
-
-
-@pytest.fixture()
-def sent_mail(monkeypatch):
-    calls: list[dict] = []
-
-    def fake_send(config, to: str, subject: str, text: str) -> None:
-        calls.append({"to": to, "subject": subject, "text": text, "config": config})
-
-    monkeypatch.setattr("app.services.password_reset.send_email", fake_send)
-    monkeypatch.setattr("app.routers.admin.settings.send_email", fake_send)
-    return calls
+CODE_WRONG = "验证码错误"
+CODE_EXPIRED = "验证码已过期"
+CODE_USED = "验证码已使用"
 
 
 def _root_headers(client, admin_user):
@@ -115,15 +50,6 @@ def _enable_mail(client, headers, **overrides):
     return resp.json()
 
 
-def _register(client, email: str = "reset-user@example.com"):
-    resp = client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": "secret12"},
-    )
-    assert resp.status_code == 200, resp.text
-    return resp.json()
-
-
 def _send(client, email: str):
     return client.post("/api/v1/auth/forgot-password/send", json={"email": email})
 
@@ -135,26 +61,17 @@ def _reset(client, email: str, code: str, password: str = "newpass99"):
     )
 
 
-def _code_from(calls: list[dict], email: str) -> str:
-    match = None
-    for call in calls:
-        if call["to"] == email:
-            match = _CODE_RE.search(call["text"])
-    assert match, calls
-    return match.group(1)
-
-
-def test_reset_with_valid_code_and_revoke_refresh(client, admin_user, memory_redis, sent_mail):
+def test_reset_with_valid_code_and_revoke_refresh(client, admin_user, memory_redis, otp_mail):
     headers = _root_headers(client, admin_user)
     _enable_mail(client, headers)
-    registered = _register(client)
+    registered = register_user(client, otp_mail, "reset-user@example.com")
     email = "reset-user@example.com"
     refresh = registered["refresh_token"]
 
     sent = _send(client, email)
     assert sent.status_code == 200, sent.text
     assert sent.json()["detail"] == SENT_MESSAGE
-    code = _code_from(sent_mail, email)
+    code = code_from(otp_mail, email)
 
     short = _reset(client, email, code, "123")
     assert short.status_code == 400
@@ -164,35 +81,38 @@ def test_reset_with_valid_code_and_revoke_refresh(client, admin_user, memory_red
     assert reset.status_code == 200, reset.text
     assert reset.json()["detail"] == "密码已重置，请重新登录"
 
-    old = client.post("/api/v1/auth/login", json={"email": email, "password": "secret12"})
+    old = client.post(
+        "/api/v1/auth/login",
+        json={"mode": "password", "email": email, "password": "secret12"},
+    )
     assert old.status_code == 401
-    new = client.post("/api/v1/auth/login", json={"email": email, "password": "newpass99"})
-    assert new.status_code == 200
+    new = login_user(client, otp_mail, email, "newpass99")
+    assert new["access_token"]
     reused = client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
     assert reused.status_code == 401
 
 
-def test_wrong_code_then_too_many_attempts(client, admin_user, memory_redis, sent_mail):
+def test_wrong_code_then_too_many_attempts(client, admin_user, memory_redis, otp_mail):
     headers = _root_headers(client, admin_user)
     _enable_mail(client, headers)
     email = "attempts@example.com"
-    _register(client, email)
+    register_user(client, otp_mail, email)
     sent = _send(client, email)
     assert sent.status_code == 200
-    code = _code_from(sent_mail, email)
+    code = code_from(otp_mail, email)
     wrong = "000000" if code != "000000" else "111111"
     for _ in range(5):
         resp = _reset(client, email, wrong)
         assert resp.status_code == 400
-        assert resp.json()["detail"] == INVALID_CODE
+        assert resp.json()["detail"] == CODE_WRONG
     burned = _reset(client, email, code)
     assert burned.status_code == 400
-    assert burned.json()["detail"] == INVALID_CODE
-    still = client.post("/api/v1/auth/login", json={"email": email, "password": "secret12"})
-    assert still.status_code == 200
+    assert burned.json()["detail"] == CODE_USED
+    still = login_user(client, otp_mail, email, "secret12")
+    assert still["access_token"]
 
 
-def test_expired_code(client, admin_user, db_session, memory_redis, sent_mail):
+def test_expired_code(client, admin_user, db_session, memory_redis, otp_mail):
     from datetime import UTC, datetime, timedelta
 
     from lawbot.db.models import AuthChallenge
@@ -200,9 +120,9 @@ def test_expired_code(client, admin_user, db_session, memory_redis, sent_mail):
     headers = _root_headers(client, admin_user)
     _enable_mail(client, headers)
     email = "expired@example.com"
-    _register(client, email)
+    register_user(client, otp_mail, email)
     assert _send(client, email).status_code == 200
-    code = _code_from(sent_mail, email)
+    code = code_from(otp_mail, email)
     row = (
         db_session.query(AuthChallenge)
         .filter_by(purpose="reset_password", subject=email)
@@ -214,64 +134,68 @@ def test_expired_code(client, admin_user, db_session, memory_redis, sent_mail):
     memory_redis.values.clear()
     resp = _reset(client, email, code)
     assert resp.status_code == 400
-    assert resp.json()["detail"] == INVALID_CODE
+    assert resp.json()["detail"] == CODE_EXPIRED
 
 
-def test_code_cannot_be_reused(client, admin_user, memory_redis, sent_mail):
+def test_code_cannot_be_reused(client, admin_user, memory_redis, otp_mail):
     headers = _root_headers(client, admin_user)
     _enable_mail(client, headers)
     email = "once@example.com"
-    _register(client, email)
+    register_user(client, otp_mail, email)
     assert _send(client, email).status_code == 200
-    code = _code_from(sent_mail, email)
+    code = code_from(otp_mail, email)
     assert _reset(client, email, code).status_code == 200
     again = _reset(client, email, code, "otherpass1")
     assert again.status_code == 400
-    assert again.json()["detail"] == INVALID_CODE
+    assert again.json()["detail"] in {CODE_USED, CODE_WRONG, "请重新获取验证码"}
 
 
-def test_unknown_email_matches_registered_response(client, admin_user, memory_redis, sent_mail):
+def test_unknown_email_matches_registered_response(client, admin_user, memory_redis, otp_mail):
     headers = _root_headers(client, admin_user)
     _enable_mail(client, headers)
     known = "known@example.com"
-    _register(client, known)
+    register_user(client, otp_mail, known)
+    before = len(otp_mail)
     missing = _send(client, "missing@example.com")
     found = _send(client, known)
     assert missing.status_code == 200
     assert found.status_code == 200
     assert missing.json() == found.json()
     assert missing.json()["detail"] == SENT_MESSAGE
-    assert [call["to"] for call in sent_mail] == [known]
+    assert [call["to"] for call in otp_mail[before:] if call["to"] == known] == [known]
 
 
-def test_disabled_user_does_not_send(client, admin_user, db_session, memory_redis, sent_mail):
+def test_disabled_user_does_not_send(client, admin_user, db_session, memory_redis, otp_mail):
     headers = _root_headers(client, admin_user)
     _enable_mail(client, headers)
     email = "disabled-reset@example.com"
-    _register(client, email)
+    register_user(client, otp_mail, email)
     user = db_session.query(User).filter_by(email=email).one()
     user.disabled = True
     db_session.commit()
 
+    before = len(otp_mail)
     disabled = _send(client, email)
     missing = _send(client, "nobody-disabled@example.com")
     assert disabled.status_code == 200
     assert disabled.json() == missing.json()
-    assert sent_mail == []
+    assert len(otp_mail) == before
 
 
-def test_mail_disabled_returns_explicit_error(client, memory_redis, sent_mail):
+def test_mail_disabled_returns_explicit_error(client, memory_redis, otp_mail, db_session):
+    from otp_helpers import seed_mail_enabled
+
+    seed_mail_enabled(db_session, enabled=False)
     resp = _send(client, "someone@example.com")
     assert resp.status_code == 400
     assert resp.json()["detail"] == "邮件服务未启用"
-    assert sent_mail == []
 
 
-def test_smtp_failure_does_not_pretend_sent(client, admin_user, memory_redis, monkeypatch):
+def test_smtp_failure_does_not_pretend_sent(client, admin_user, memory_redis, otp_mail, monkeypatch):
     headers = _root_headers(client, admin_user)
     _enable_mail(client, headers)
     email = "smtp-fail@example.com"
-    _register(client, email)
+    register_user(client, otp_mail, email)
 
     def boom(config, to, subject, text):
         raise MailDeliveryError("邮件发送失败：connection refused")
@@ -280,7 +204,9 @@ def test_smtp_failure_does_not_pretend_sent(client, admin_user, memory_redis, mo
     resp = _send(client, email)
     assert resp.status_code == 502
     assert "邮件发送失败" in resp.json()["detail"]
-    assert not any(key.startswith("lawbot:auth:challenge:") for key in memory_redis.values)
+    assert not any(
+        key.startswith("lawbot:auth:challenge:reset_password:") for key in memory_redis.values
+    )
 
 
 def test_mail_settings_roundtrip_hides_password(client, admin_user, normal_admin, db_session):
@@ -324,9 +250,10 @@ def test_mail_settings_roundtrip_hides_password(client, admin_user, normal_admin
     assert readable.status_code == 200
 
 
-def test_admin_test_mail_uses_saved_config(client, admin_user, sent_mail):
+def test_admin_test_mail_uses_saved_config(client, admin_user, otp_mail):
     headers = _root_headers(client, admin_user)
     _enable_mail(client, headers)
+    before = len(otp_mail)
     resp = client.post(
         "/api/admin/settings/mail/test",
         headers=headers,
@@ -334,30 +261,29 @@ def test_admin_test_mail_uses_saved_config(client, admin_user, sent_mail):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["detail"] == "测试邮件已发送"
-    assert sent_mail[0]["to"] == "qa@example.com"
-    assert sent_mail[0]["config"].smtp_password == "s3cret-mail"
+    assert otp_mail[before]["to"] == "qa@example.com"
+    assert otp_mail[before]["config"].smtp_password == "s3cret-mail"
 
 
-def test_reset_after_redis_key_deleted(client, admin_user, memory_redis, sent_mail):
-    """Postgres remains source of truth when Redis cache is wiped."""
+def test_reset_after_redis_key_deleted(client, admin_user, memory_redis, otp_mail):
     from app.services.auth_challenges import PURPOSE_RESET_PASSWORD, redis_key
 
     headers = _root_headers(client, admin_user)
     _enable_mail(client, headers)
     email = "redis-miss@example.com"
-    _register(client, email)
+    register_user(client, otp_mail, email)
     assert _send(client, email).status_code == 200
-    code = _code_from(sent_mail, email)
+    code = code_from(otp_mail, email)
     key = redis_key(PURPOSE_RESET_PASSWORD, email)
     assert key in memory_redis.values
     memory_redis.delete(key)
     reset = _reset(client, email, code, "newpass99")
     assert reset.status_code == 200, reset.text
-    login = client.post("/api/v1/auth/login", json={"email": email, "password": "newpass99"})
-    assert login.status_code == 200
+    login = login_user(client, otp_mail, email, "newpass99")
+    assert login["access_token"]
 
 
-def test_send_and_reset_when_redis_down(client, admin_user, sent_mail, monkeypatch):
+def test_send_and_reset_when_redis_down(client, admin_user, otp_mail, monkeypatch):
     class BoomRedis:
         def set(self, *a, **k):
             raise ConnectionError("redis down")
@@ -372,23 +298,24 @@ def test_send_and_reset_when_redis_down(client, admin_user, sent_mail, monkeypat
     headers = _root_headers(client, admin_user)
     _enable_mail(client, headers)
     email = "redis-down@example.com"
-    _register(client, email)
+    register_user(client, otp_mail, email)
     sent = _send(client, email)
     assert sent.status_code == 200, sent.text
-    code = _code_from(sent_mail, email)
+    code = code_from(otp_mail, email)
     reset = _reset(client, email, code, "newpass99")
     assert reset.status_code == 200, reset.text
 
 
-def test_unknown_email_leaves_no_usable_code(client, admin_user, db_session, memory_redis, sent_mail):
+def test_unknown_email_leaves_no_usable_code(client, admin_user, db_session, memory_redis, otp_mail):
     from lawbot.db.models import AuthChallenge
 
     headers = _root_headers(client, admin_user)
     _enable_mail(client, headers)
     email = "ghost@example.com"
+    before = len(otp_mail)
     resp = _send(client, email)
     assert resp.status_code == 200
-    assert sent_mail == []
+    assert len(otp_mail) == before
     rows = db_session.query(AuthChallenge).filter_by(purpose="reset_password", subject=email).all()
     assert len(rows) == 1
     assert rows[0].code_hash is None
@@ -396,12 +323,18 @@ def test_unknown_email_leaves_no_usable_code(client, admin_user, db_session, mem
     assert _reset(client, email, "123456").status_code == 400
 
 
-def test_login_lockout_after_failures(client, memory_redis):
+def test_login_lockout_after_failures(client, memory_redis, otp_mail):
     email = "lockout@example.com"
-    _register(client, email)
+    register_user(client, otp_mail, email)
     for _ in range(5):
-        bad = client.post("/api/v1/auth/login", json={"email": email, "password": "wrong-pass"})
+        bad = client.post(
+            "/api/v1/auth/login",
+            json={"mode": "password", "email": email, "password": "wrong-pass"},
+        )
         assert bad.status_code == 401
-    locked = client.post("/api/v1/auth/login", json={"email": email, "password": "secret12"})
+    locked = client.post(
+        "/api/v1/auth/login",
+        json={"mode": "password", "email": email, "password": "secret12"},
+    )
     assert locked.status_code == 429
     assert "登录失败" in locked.json()["detail"]

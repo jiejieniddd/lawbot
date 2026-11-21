@@ -50,7 +50,8 @@ ASSERTION_MARKERS = (
 )
 UNSUPPORTED_REPLACEMENT = "检索结果未覆盖该点。"
 SECTION_RE = re.compile(
-    r"^## (法律依据|分析|建议|风险提示|免责声明)\s*$",
+    r"^## (方向建议|要点|方向或要点|简单说|你可以怎么做|建议|注意|声明|"
+    r"法律依据|分析|风险提示|免责声明)\s*$",
     re.MULTILINE,
 )
 
@@ -78,7 +79,20 @@ def _split_sections(text: str) -> dict[str, str]:
 
 
 def _join_sections(sections: dict[str, str], original: str) -> str:
-    order = ["法律依据", "分析", "建议", "风险提示", "免责声明"]
+    order = [
+        "简单说",
+        "方向建议",
+        "方向或要点",
+        "要点",
+        "你可以怎么做",
+        "建议",
+        "注意",
+        "法律依据",
+        "分析",
+        "风险提示",
+        "免责声明",
+        "声明",
+    ]
     if not any(title in sections for title in order):
         return original
     blocks: list[str] = []
@@ -169,8 +183,8 @@ def _rewrite_unsupported_assertions(
 ) -> tuple[str, list[str]]:
     sections = _split_sections(text)
     issues: list[str] = []
-    llm_used = False
-    for title in ("分析", "建议"):
+    _ = credentials  # reserved; LLM support probe disabled for latency
+    for title in ("分析", "建议", "要点", "方向或要点", "你可以怎么做"):
         body = sections.get(title)
         if not body:
             continue
@@ -184,10 +198,8 @@ def _rewrite_unsupported_assertions(
             if not any(marker in raw for marker in ASSERTION_MARKERS) and not extract_article_refs(raw):
                 rewritten.append(sentence)
                 continue
+            # Prefer local rules; do not call a second LLM for support probes.
             supported = _sentence_supported(raw, hits)
-            if supported is None and credentials is not None and not llm_used:
-                supported = _llm_sentence_supported(raw, hits, credentials)
-                llm_used = True
             if supported is None:
                 supported = False
             if supported:
@@ -247,10 +259,10 @@ def _citation_consistency(
 def _downgrade_report(risk: str | None = None) -> str:
     return format_legal_report(
         EmitLegalReportArgs(
-            legal_basis="检索结果未覆盖部分关键判断，以下仅作一般提示。",
-            analysis="现有检索片段不足以支撑更具体的法律结论，请以核实后的事实与正式意见为准。",
-            advice="建议先固定证据，并通过合法途径协商、投诉或咨询执业律师。",
-            risk=(risk or "结果存在不确定性，重大决定前请寻求专业法律帮助。"),
+            direction="检索结果未覆盖部分关键判断，以下仅作一般提示。",
+            key_points="现有知识库片段不足以支撑更具体的岗位结论，请结合自身背景与目标 JD 再判断。",
+            advice="建议先明确技术栈差距，列学习计划与可讲清的项目案例，再按节奏投递与面试。",
+            risk=(risk or "招聘结果存在不确定性，重大决定前请多方核实。"),
         )
     )
 
@@ -277,17 +289,24 @@ def run_self_check(
     )
     issues.extend(unsupported_issues)
 
-    current, current_citations, consistency_issues = _citation_consistency(
-        current, current_citations
+    career_hits = any(
+        str(h.get("domain") or h.get("category") or "")
+        in {"interview_qa", "tech_docs", "gotchas", "job_skills", "self_test"}
+        for h in law_hits
     )
-    issues.extend(consistency_issues)
+    # Statute-style 《法》第N条 consistency does not apply to CareerBot KB citations.
+    if not career_hits:
+        current, current_citations, consistency_issues = _citation_consistency(
+            current, current_citations
+        )
+        issues.extend(consistency_issues)
 
-    current, current_citations, more_consistency = _citation_consistency(
-        current, current_citations
-    )
-    for item in more_consistency:
-        if item not in issues:
-            issues.append(item)
+        current, current_citations, more_consistency = _citation_consistency(
+            current, current_citations
+        )
+        for item in more_consistency:
+            if item not in issues:
+                issues.append(item)
 
     if _still_has_absolute(current):
         sections = _split_sections(current)
@@ -302,7 +321,7 @@ def run_self_check(
 
     # Any remaining assertion markers that still have no hit support → downgrade
     leftover = False
-    for title in ("分析", "建议"):
+    for title in ("分析", "建议", "要点", "方向或要点", "你可以怎么做"):
         body = _split_sections(current).get(title) or ""
         for sentence in re.split(r"(?<=[。！？；\n])", body):
             raw = sentence.strip()

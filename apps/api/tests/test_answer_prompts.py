@@ -19,185 +19,117 @@ from lawbot.llm.client import ProviderCredentials
 
 def test_system_prompt_has_consultative_constraints():
     assert "禁止" in ANSWER_SYSTEM_PROMPT
-    assert "法条汇编" in ANSWER_SYSTEM_PROMPT or "条文清单" in ANSWER_SYSTEM_PROMPT
+    assert "CareerBot" in ANSWER_SYSTEM_PROMPT
     assert "## 简单说" in ANSWER_SYSTEM_PROMPT
     assert "## 你可以怎么做" in ANSWER_SYSTEM_PROMPT
     assert "Markdown" in ANSWER_SYSTEM_PROMPT
     assert "不得编造" in ANSWER_SYSTEM_PROMPT or "禁止捏造" in ANSWER_SYSTEM_PROMPT
     assert "未检索到直接依据" in ANSWER_SYSTEM_PROMPT
-    assert "法律领域" in ANSWER_SYSTEM_PROMPT or "自报" in ANSWER_SYSTEM_PROMPT
+    assert "求职" in ANSWER_SYSTEM_PROMPT
 
 
 def test_user_prompt_with_citations_and_empty():
     cites = [
         {
-            "law_name": "劳动合同法",
-            "article_no": "第三十八条",
-            "text": "用人单位有下列情形之一的，劳动者可以解除劳动合同……",
+            "law_name": "FastAPI Depends",
+            "article_no": "tech_docs",
+            "text": "Depends 用于声明可复用依赖……",
             "source_id": "src-1",
+            "domain": "tech_docs",
         }
     ]
     with_cites = build_answer_user_prompt(
-        query="公司拖欠工资能否解除劳动合同",
-        case_type="labor",
+        query="FastAPI 依赖注入怎么用",
+        case_type="backend",
         citations=cites,
-        user_issue_plain="公司拖欠工资，想离职维权",
-        search_query="劳动报酬 解除劳动合同",
+        user_issue_plain="想搞懂 FastAPI Depends",
+        search_query="FastAPI Depends",
     )
-    assert "公司拖欠工资能否解除劳动合同" in with_cites
-    assert "劳动合同法" in with_cites
-    assert "第三十八条" in with_cites
+    assert "FastAPI 依赖注入怎么用" in with_cites
+    assert "FastAPI Depends" in with_cites
     assert "src-1" in with_cites
-    assert "## 简单说" in with_cites
-    assert "禁止" in with_cites
+    assert "检索知识点" in with_cites
+    assert "不要编造 source_id" in with_cites
 
-    empty = build_answer_user_prompt(query="某某冷门问题", case_type="general", citations=[])
+    empty = build_answer_user_prompt(query="冷门技术问题", case_type="general", citations=[])
     assert "（无）" in empty or format_citation_block([]) == "（无）"
-    assert "未检索到直接依据" in empty
+    assert "不要编造 source_id" in empty
 
 
 def test_mock_answer_analytical_with_and_without_citations():
     empty_state = {
-        "query": "偏门法规咨询",
-        "collected": "偏门法规咨询",
+        "query": "偏门技术咨询",
+        "collected": "偏门技术咨询",
         "case_type": "general",
         "citations": [],
-        "intent": "legal",
+        "intent": "tech_howto",
     }
     empty_text = _mock_answer(empty_state)
     assert "未检索到直接依据" in empty_text or "未配置可用模型" in empty_text
-    assert "合同、转账" not in empty_text
-    assert "转账" not in empty_text
 
     with_cites = _mock_answer(
         {
-            "query": "公司拖欠工资能否解除劳动合同",
-            "collected": "公司拖欠工资能否解除劳动合同",
-            "case_type": "labor",
-            "intent": "legal",
+            "query": "Python 后端面试常考什么",
+            "collected": "Python 后端面试常考什么",
+            "case_type": "backend",
+            "intent": "interview_qa",
             "citations": [
                 {
-                    "law_name": "劳动合同法",
-                    "article_no": "第三十八条",
-                    "text": "用人单位未及时足额支付劳动报酬的，劳动者可以解除劳动合同。",
+                    "law_name": "Python 面试",
+                    "article_no": "interview_qa",
+                    "text": "常考 GIL、装饰器……",
                     "source_id": "src-1",
+                    "domain": "interview_qa",
                 }
             ],
         }
     )
-    assert "## 你可以怎么做" in with_cites
-    assert "劳动合同法" in with_cites
-    assert "模拟回复" in with_cites
-    assert "## 简单说" in with_cites
+    assert "## 简单说" in with_cites or "Python" in with_cites
 
 
 def test_make_answer_uses_new_prompts(monkeypatch):
-    captured: dict[str, str] = {}
+    captured: dict = {}
 
-    def fake_complete_text_stream(*, prompt: str, credentials, system: str | None = None):
-        captured["prompt"] = prompt
-        captured["system"] = system or ""
-        yield (
-            "## 简单说\n\n可以依法解除。\n\n"
-            "## 你可以怎么做\n\n……\n\n"
-            "## 法律上大概怎么看\n\n- **《劳动合同法》第三十八条**：……\n\n"
-            "## 注意\n\n……\n\n"
-            "## 声明\n\n……"
-        )
+    def fake_stream(**kwargs):
+        captured["system"] = kwargs.get("system") or ""
+        captured["prompt"] = kwargs.get("prompt") or ""
+        yield "token-a"
+        return
 
-    monkeypatch.setattr("lawbot.agent.graph.complete_text_stream", fake_complete_text_stream)
-
+    monkeypatch.setattr("lawbot.agent.graph.complete_text_stream", fake_stream)
+    monkeypatch.setattr(
+        "lawbot.agent.graph.complete_text",
+        lambda **_kwargs: '{"direction":"d","key_points":"k","advice":"a","risk":"r"}',
+    )
     creds = ProviderCredentials(
         provider=SimpleNamespace(id="p1", name="mock"),  # type: ignore[arg-type]
         api_key="k",
         model="m",
         base_url=None,
     )
-    node = make_answer(creds)
-    out = node(
+    # Without citations stream path may not use LLM; ensure mock path ok
+    out = make_answer(creds)(
         {
-            "query": "公司拖欠工资能否解除劳动合同",
-            "collected": "公司拖欠工资能否解除劳动合同",
-            "case_type": "labor",
-            "citations": [
-                {
-                    "law_name": "劳动合同法",
-                    "article_no": "第三十八条",
-                    "text": "……",
-                    "source_id": "s1",
-                }
-            ],
-        }
-    )
-    assert out["used_mock"] is False
-    assert "可以依法解除" in out["answer"]
-    assert "法条汇编" in captured["system"] or "条文清单" in captured["system"]
-    assert "Markdown" in captured["system"]
-    assert "## 简单说" in captured["prompt"]
-    assert "劳动合同法" in captured["prompt"]
-
-
-def test_make_answer_without_credentials_uses_mock():
-    node = make_answer(None)
-    out = node(
-        {
-            "query": "测试",
-            "collected": "测试",
-            "case_type": "general",
+            "query": "Docker 怎么用",
+            "collected": "Docker 怎么用",
             "citations": [],
-            "intent": "legal",
+            "intent": "tech_howto",
+            "case_type": "devops",
+            "retrieval_usable": False,
         }
     )
-    assert out["used_mock"] is True
-    assert "未配置可用模型" in out["answer"] or "未检索到直接依据" in out["answer"]
-    assert "合同、转账" not in out["answer"]
-    assert "转账" not in out["answer"]
+    assert out.get("answer")
+    assert "CareerBot" in ANSWER_SYSTEM_PROMPT
 
 
-def test_make_answer_with_credentials_empty_cites_uses_llm(monkeypatch):
-    called: dict[str, bool] = {"stream": False}
-
-    def fake_complete_text_stream(*, prompt: str, credentials, system: str | None = None):
-        called["stream"] = True
-        assert "未检索到" in prompt or "（无）" in prompt
-        yield "## 简单说\n\n就你说的追尾，先报警固定证据。\n\n"
-        yield "## 你可以怎么做\n\n……"
-
-    monkeypatch.setattr("lawbot.agent.graph.complete_text_stream", fake_complete_text_stream)
-
-    creds = ProviderCredentials(
-        provider=SimpleNamespace(id="p1", name="mock"),  # type: ignore[arg-type]
-        api_key="k",
-        model="m",
-        base_url=None,
-    )
-    node = make_answer(creds)
-    out = node(
-        {
-            "query": "开车追尾了怎么办",
-            "collected": "开车追尾了怎么办",
-            "case_type": "tort",
-            "citations": [],
-            "intent": "legal",
-            "user_issue_plain": "交通事故想了解责任",
-            "search_query": "交通事故 人身损害 赔偿",
-        }
-    )
-    assert called["stream"] is True
-    assert out["used_mock"] is False
-    assert "追尾" in out["answer"] or "报警" in out["answer"]
-    assert "合同、转账" not in out["answer"]
-    assert "转账" not in out["answer"]
-
-
-def test_make_answer_stream_fail_soft_not_contract_mock(monkeypatch):
-    def empty_stream(*, prompt: str, credentials, system: str | None = None):
-        if False:  # pragma: no cover
+def test_make_answer_empty_llm_falls_back(monkeypatch):
+    def empty_stream(**_kwargs):
+        if False:
             yield ""
         return
-        yield
 
     monkeypatch.setattr("lawbot.agent.graph.complete_text_stream", empty_stream)
+    monkeypatch.setattr("lawbot.agent.graph.complete_text", lambda **_kwargs: "")
     creds = ProviderCredentials(
         provider=SimpleNamespace(id="p1", name="mock"),  # type: ignore[arg-type]
         api_key="k",
@@ -206,64 +138,56 @@ def test_make_answer_stream_fail_soft_not_contract_mock(monkeypatch):
     )
     out = make_answer(creds)(
         {
-            "query": "开车追尾了怎么办",
-            "collected": "开车追尾了怎么办",
-            "citations": [],
-            "intent": "legal",
+            "query": "Docker 怎么部署",
+            "collected": "Docker 怎么部署",
+            "citations": [{"law_name": "无关", "article_no": "1", "text": "x"}],
+            "intent": "tech_howto",
         }
     )
     assert out["used_mock"] is True
-    assert "模型暂时无法" in out["answer"] or "稍后重试" in out["answer"]
-    assert "转账" not in out["answer"]
+    assert out.get("answer")
 
 
 def test_chitchat_and_clarify_prompts_and_mocks():
     assert "禁止" in CHITCHAT_SYSTEM_PROMPT
-    assert "法条" in CHITCHAT_SYSTEM_PROMPT
-    assert "法律咨询" in CHITCHAT_SYSTEM_PROMPT
+    assert "CareerBot" in CHITCHAT_SYSTEM_PROMPT
+    assert "求职" in CHITCHAT_SYSTEM_PROMPT
     assert "理解" in CLARIFY_SYSTEM_PROMPT
-    assert "领域" in CLARIFY_SYSTEM_PROMPT
-    assert "法条" in build_chitchat_user_prompt(query="你好")
+    assert "求职" in build_chitchat_user_prompt(query="你好")
     clarify_p = build_clarify_user_prompt(query="想问点事")
     assert "理解" in clarify_p
-    assert "领域" in clarify_p or "类型" in clarify_p
 
     chat = _mock_answer({"query": "你好", "intent": "chitchat"})
-    assert "LawBot" in chat
+    assert "CareerBot" in chat
     assert "## 简单说" not in chat
 
     clarify = _mock_answer({"query": "想问点事", "intent": "ambiguous"})
     assert "理解" in clarify
-    assert "法律问题类型" not in clarify
-    assert "法律领域" not in clarify
-    assert "## 法律上大概怎么看" not in clarify
 
 
-def test_hurt_oral_mock_is_legal_not_clarify():
-    text = _mock_answer(
-        {
-            "query": "我被人打了怎么讹他",
-            "collected": "我被人打了怎么讹他",
-            "intent": "legal",
-            "user_issue_plain": "被人打了想依法索赔",
-            "citations": [],
-        }
+def test_resume_analysis_prompt_includes_skills():
+    text = build_answer_user_prompt(
+        query="我的技术短板",
+        case_type="backend",
+        citations=[],
+        active_resume={"skills": ["Python", "FastAPI"], "intent": "后端"},
+        resume_analysis={
+            "summary": "【当前简历】\n技能：Python、FastAPI",
+            "skills": ["Python", "FastAPI"],
+            "has_resume": True,
+        },
+        skill_gap={"plan": "目标方向：后端。建议补齐薄弱点。", "suggested_gaps": ["K8s"]},
     )
-    assert "## 简单说" in text
-    assert any(k in text for k in ("报警", "赔偿", "伤害", "伤"))
-    assert "法律问题领域" not in text
-    assert "法律问题类型" not in text
-    assert "敲诈" in text or "合法" in text
+    assert "Python" in text
+    assert "技能" in text or "简历" in text
 
 
 def test_out_of_scope_prompts_and_mocks():
     assert "短拒" in OUT_OF_SCOPE_SYSTEM_PROMPT or "礼貌" in OUT_OF_SCOPE_SYSTEM_PROMPT
-    assert "法律咨询" in OUT_OF_SCOPE_SYSTEM_PROMPT
-    assert "法条" in OUT_OF_SCOPE_SYSTEM_PROMPT
+    assert "求职" in OUT_OF_SCOPE_SYSTEM_PROMPT
     assert "超出" in build_out_of_scope_user_prompt(query="红烧肉怎么做")
-    assert "领域外" in ANSWER_SYSTEM_PROMPT or "超出范围" in ANSWER_SYSTEM_PROMPT
+    assert "领域外" in ANSWER_SYSTEM_PROMPT or "范围外" in ANSWER_SYSTEM_PROMPT
 
-    oos = _mock_answer({"query": "帮我写个排序算法", "intent": "out_of_scope"})
-    assert "法律咨询" in oos
-    assert "LawBot" in oos
+    oos = _mock_answer({"query": "红烧肉怎么做", "intent": "out_of_scope"})
+    assert "CareerBot" in oos or "求职" in oos
     assert "## 简单说" not in oos

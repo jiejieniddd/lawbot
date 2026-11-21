@@ -103,6 +103,14 @@ function isForgotPasswordRequest(path: string): boolean {
   return path.includes('/api/v1/auth/forgot-password/')
 }
 
+function isAuthCodeSendRequest(path: string): boolean {
+  return (
+    isForgotPasswordRequest(path) ||
+    path.includes('/api/v1/auth/register/send') ||
+    path.includes('/api/v1/auth/login/send')
+  )
+}
+
 function isAuthExempt(path: string): boolean {
   return (
     path.includes('/api/v1/auth/login') ||
@@ -198,7 +206,7 @@ export async function api<T>(path: string, options: RequestInit = {}, retried = 
   if (res.status === 401) {
     // Public auth calls surface API detail for ElMessage and must not hard-redirect.
     if (isAuthExempt(path)) {
-      const fallback = isForgotPasswordRequest(path) ? '请求失败' : '账号或密码错误'
+      const fallback = isAuthCodeSendRequest(path) ? '请求失败' : '账号或密码错误'
       await throwHttpError(res, fallback)
     }
     handleUnauthorized()
@@ -211,7 +219,7 @@ export async function api<T>(path: string, options: RequestInit = {}, retried = 
 }
 
 export type ChatEvent = {
-  type: 'token' | 'citation' | 'done' | 'error'
+  type: 'token' | 'citation' | 'done' | 'error' | 'status'
   data: Record<string, unknown>
   request_id: string
 }
@@ -220,6 +228,7 @@ export async function streamChat(
   conversationId: string,
   content: string,
   onEvent: (ev: ChatEvent) => void,
+  options?: { signal?: AbortSignal },
 ): Promise<void> {
   await ensureAccessToken()
   const doFetch = async () => {
@@ -231,6 +240,7 @@ export async function streamChat(
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ conversation_id: conversationId, content }),
+      signal: options?.signal,
     })
   }
 
@@ -244,28 +254,35 @@ export async function streamChat(
     handleUnauthorized()
   }
   if (!res.ok || !res.body) {
-    await throwHttpError(res, 'Chat failed')
+    await throwHttpError(res, '生成失败，请稍后重试')
   }
   const body = res.body
   if (!body) {
-    throw new Error('Chat failed')
+    throw new Error('生成失败，请稍后重试')
   }
 
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const parts = buffer.split('\n\n')
-    buffer = parts.pop() || ''
-    for (const part of parts) {
-      const line = part.trim()
-      if (!line.startsWith('data:')) continue
-      const json = line.slice(5).trim()
-      if (!json) continue
-      onEvent(JSON.parse(json) as ChatEvent)
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop() || ''
+      for (const part of parts) {
+        const line = part.trim()
+        if (!line.startsWith('data:')) continue
+        const json = line.slice(5).trim()
+        if (!json) continue
+        onEvent(JSON.parse(json) as ChatEvent)
+      }
     }
+  } catch (err) {
+    if (options?.signal?.aborted) {
+      throw new Error('生成超时，请稍后重试')
+    }
+    throw err
   }
 }

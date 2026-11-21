@@ -24,6 +24,7 @@ from lawbot.domain.schemas import ChatEvent  # noqa: E402
 from lawbot.rag.fake import FakeRetriever  # noqa: E402
 
 GOLD_PATH = ROOT / "eval" / "sample_gold.json"
+CAREER_GOLD_PATH = ROOT / "eval" / "career_sample_gold.json"
 REPORT_PATH = ROOT / "eval" / "last_report.json"
 
 
@@ -32,8 +33,9 @@ class EmptyRetriever:
         return []
 
 
-def _load_gold() -> list[dict[str, Any]]:
-    return json.loads(GOLD_PATH.read_text(encoding="utf-8"))
+def _load_gold(path: Path | None = None) -> list[dict[str, Any]]:
+    target = path or GOLD_PATH
+    return json.loads(target.read_text(encoding="utf-8"))
 
 
 def _pick_retriever(name: str):
@@ -77,8 +79,11 @@ def _phrase_hit(text: str, phrase: str) -> bool:
 
 def _observed_behavior(state: dict[str, Any], answer: str, events: list[Any]) -> str:
     phase = str(state.get("phase") or "")
-    if _has_error(events) or phase == "out_of_scope":
+    intent = str(state.get("intent") or "")
+    if _has_error(events) or phase == "out_of_scope" or intent == "out_of_scope":
         return "refuse"
+    if phase == "chitchat" or intent == "chitchat":
+        return "chitchat"
     if phase == "followup" or "请补充：" in answer:
         return "clarify"
     if phase in {"no_basis", "staged"}:
@@ -194,7 +199,19 @@ def _evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
-    cases = _load_gold()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run gold cases against agent graph")
+    parser.add_argument(
+        "--gold",
+        default=str(GOLD_PATH),
+        help="Path to gold JSON (use eval/career_sample_gold.json for CareerBot)",
+    )
+    args = parser.parse_args()
+    gold_path = Path(args.gold)
+    if not gold_path.is_file():
+        gold_path = ROOT / args.gold
+    cases = _load_gold(gold_path)
     results = [_evaluate_case(case) for case in cases]
 
     with_cites = [row for row in results if row["citation_count"] > 0]
@@ -235,7 +252,7 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    print("=== LawBot eval ===")
+    print(f"=== CareerBot/LawBot eval ({gold_path.name}) ===")
     print(f"cases: {summary['passed']}/{summary['total']} passed")
     print(f"citation_verifiable_rate: {summary['citation_verifiable_rate']:.2%}")
     print(f"unsupported_assertion_rate: {summary['unsupported_assertion_rate']:.2%}")

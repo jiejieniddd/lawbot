@@ -1,9 +1,9 @@
-def test_user_token_forbidden_on_admin(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "normal01@example.com", "password": "secret12"},
-    )
-    token = reg.json()["access_token"]
+from otp_helpers import register_user
+
+
+def test_user_token_forbidden_on_admin(client, otp_mail):
+    reg = register_user(client, otp_mail, "normal01@example.com")
+    token = reg["access_token"]
     resp = client.get(
         "/api/admin/stats/overview",
         headers={"Authorization": f"Bearer {token}"},

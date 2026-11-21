@@ -28,19 +28,42 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = pair.access_token
   }
 
-  async function register(account: string, password: string, displayName?: string) {
+  async function sendRegisterCode(email: string) {
+    return api<{ detail: string; retry_after_seconds: number }>('/api/v1/auth/register/send', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    })
+  }
+
+  async function sendLoginCode(email: string) {
+    return api<{ detail: string; retry_after_seconds: number }>('/api/v1/auth/login/send', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    })
+  }
+
+  async function register(account: string, password: string, code: string, displayName?: string) {
     const res = await api<TokenPair>('/api/v1/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email: account, password, display_name: displayName }),
+      body: JSON.stringify({ email: account, password, code, display_name: displayName }),
     })
     applyTokens(res)
     await fetchMe()
   }
 
-  async function login(account: string, password: string) {
+  async function loginPassword(account: string, password: string) {
     const res = await api<TokenPair>('/api/v1/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email: account, password }),
+      body: JSON.stringify({ mode: 'password', email: account, password }),
+    })
+    applyTokens(res)
+    await fetchMe()
+  }
+
+  async function loginWithCode(account: string, code: string) {
+    const res = await api<TokenPair>('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'email_code', email: account, code }),
     })
     applyTokens(res)
     await fetchMe()
@@ -61,10 +84,21 @@ export const useAuthStore = defineStore('auth', () => {
     })
   }
 
-  async function changePassword(oldPassword: string, newPassword: string) {
+  async function sendChangePasswordCode(oldPassword: string) {
+    return api<{ detail: string; retry_after_seconds: number }>('/api/v1/auth/me/password/send', {
+      method: 'POST',
+      body: JSON.stringify({ old_password: oldPassword }),
+    })
+  }
+
+  async function changePassword(oldPassword: string, newPassword: string, code: string) {
     await api<void>('/api/v1/auth/me/password', {
       method: 'POST',
-      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+      body: JSON.stringify({
+        old_password: oldPassword,
+        new_password: newPassword,
+        code,
+      }),
     })
     await logoutRequest()
     token.value = null
@@ -95,10 +129,14 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     user,
     token,
+    sendRegisterCode,
+    sendLoginCode,
     register,
-    login,
+    loginPassword,
+    loginWithCode,
     fetchMe,
     updateProfile,
+    sendChangePasswordCode,
     changePassword,
     uploadAvatar,
     removeAvatar,

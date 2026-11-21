@@ -1,17 +1,17 @@
-# LawBot
+# CareerBot（仓库包名仍为 LawBot / `lawbot`）
 
-C 端法律咨询 AI Agent + 后台管理（生产形态骨架）。
+C 端 **求职 / 面试 / 技术问答** AI Agent + 后台管理。栈复用原 LawBot；**不做**招聘站爬虫与自动投递。
 
 | 目录 | 说明 |
 |------|------|
 | `apps/api` | FastAPI + JWT + SSE + LangGraph |
 | `apps/web` | Vue 3 + Element Plus（C 端） |
 | `apps/admin` | React + Ant Design（后台） |
-| `apps/worker` | 知识导入：认领 `knowledge_import_jobs` → HF → memory 落盘或 Qdrant（OpenSearch 可选） |
+| `apps/worker` | 知识导入：认领 `knowledge_import_jobs` → HF → memory / Qdrant |
 | `packages/lawbot` | 共享 domain / db / rag / agent / knowledge |
 | `docs/architecture.md` | 架构说明 |
 
-架构要点：User/Admin → API → LangGraph + Hybrid RRF（`memory` / Qdrant±OpenSearch；空结果返回空引用，**不再 Fake 回退**）+ PostgreSQL + Redis。详见 [docs/architecture.md](docs/architecture.md)。
+架构：User/Admin → API → LangGraph + Hybrid RRF（`memory` / Qdrant±OpenSearch；空结果空引用，**无 Fake 回退**）+ PostgreSQL + Redis。详见 [docs/architecture.md](docs/architecture.md)。
 
 ## 快速开始（Docker Compose 全栈）
 
@@ -63,7 +63,9 @@ docker compose up postgres redis
 | `admin` | 由 root 在后台创建 | — | 可登录后台；可管 C 端用户；**不能**创建管理员 |
 | `user` | C 端自助注册，或后台创建 | — | 仅 C 端；不能登录后台 |
 
-C 端与后台均为**账号+密码**登录（API JSON 字段名仍为 `email`，存的是登录账号）。新注册账号规则：3–32 位小写字母/数字/下划线（如 `myuser`）；存量带 `@` 的老账号仍可登录。种子超管示例：`root`。
+C 端用户处置：**禁用**（`user:disable`）为软处理，账号仍在、可再启用；**硬删**（`user:delete`，`super_admin` / `admin`）仅针对 `role=user`，物理删除用户行并由 FK CASCADE 清理会话、消息等，管理员 / operator / 种子超管不可硬删。
+
+C 端登录支持两种**互斥**方式（`POST /api/v1/auth/login` 必填 `mode`）：`password`（邮箱+密码，不验验证码）或 `email_code`（邮箱+6 位验证码，不验密码）。发登录码 `POST /auth/login/send` 仅需邮箱，不再校验密码。同一次登录不会同时强制密码与验证码。后台 Admin 仍为**仅密码**登录。API JSON 字段名仍为 `email`。存量带 `@` 的邮箱账号可登录；种子超管示例：`root`（仅后台）。
 
 ## 不对 C 端 / 第三方提供平台 API Key
 
@@ -81,75 +83,81 @@ LawBot **不提供**平台级对外 `api_keys`、`lb_` Bearer、或「开发者�
 4. 点 **测试连通** → `POST /api/admin/llm-providers/{id}/test` 应返回 `ok: true`（密钥正确且上游可达时）  
 5. 对话时选取 **enabled 且 priority 最小** 的供应商经 LiteLLM 调用；若无可用供应商则 **mock 流式**
 
+流式超时（`.env`）：`LLM_TIMEOUT_SECONDS`（默认 60）只约束请求/连接/首包；`LLM_STREAM_IDLE_SECONDS`（默认 120）为 chunk 空闲超时；`LLM_STREAM_MAX_SECONDS`（默认 480）为整段硬顶。空闲/硬顶截断会保留已生成正文并提示可能不完整，不会因整段墙钟静默掐断。
+
+答长：`LLM_ANSWER_MAX_TOKENS`（显式优先）或 `LLM_ANSWER_PROFILE=normal|compact`（normal=800，compact=500；默认 normal/800）。仅作用于回答流式，不影响分类短 JSON。
+
+### 法律问答延迟（TTFT）怎么读日志
+
+看 API 日志里的 `agent_timing`：
+
+| 字段 | 含义 |
+| --- | --- |
+| `intent_ms` / `case_type_ms` / `collect_ms` / `rewrite_ms` + `source=` | 前置；强民生问应为 rule/keyword/heuristic 且接近 0 |
+| `retrieve_ms` / `embed_ms` | 检索；BM25 优先，无命中才 embed |
+| `graph_ready_ms` | 从请求到 answer/no_basis（prepare）就绪 |
+| `time_to_first_token_ms` | 首字；**减去** `graph_ready_ms` ≈ 上游模型 TTFT |
+| `answer_stream_ms` | 首字→末字（总生成） |
+
+- **阶段1**：规则短路，减少前置非流式 LLM。
+- **阶段2**：prepare 就绪即开流（不必等图 END）；压答长。
+- 若 `time_to_first_token_ms - graph_ready_ms` 仍很大：换更低延迟聊天模型、或 `LLM_ANSWER_PROFILE=compact` / 更小 `LLM_ANSWER_MAX_TOKENS`；保证 BM25 有库以减少 embed。代码无法把上游模型「变快」。
+
+样例（FakeRetriever + 模拟上游 sleep 50ms，阶段2 后本地实测）：
+
+| 问句 | 前置 ms / source | retrieve_ms | graph_ready_ms | time_to_first_token_ms | 结论 |
+| --- | --- | --- | --- | --- | --- |
+| 公司试用期辞退… | 皆 0（rule/keyword/heuristic） | 0 | 22 | 73 | 前置 LLM=0；TTFT−ready≈51ms 为上游 |
+| 试用期被辞退…（无「公司」） | 同上 | 0 | 18 | 68 | 当事人槽命中，仍 0 前置 LLM |
+| 借条/起诉/时效（欠款） | 同上 | 0 | 20 | 70 | 同上；大头仍在上游模型 |
+
 加密：设置 `.env` 中 `ENCRYPTION_KEY`（Fernet key）。为空时由 `JWT_SECRET` 派生——**生产请使用独立稳定的 ENCRYPTION_KEY**，否则轮换 JWT 会导致无法解密已存 Key。
 
-## 低配启用真实检索（推荐，无需 OpenSearch）
+## CareerBot 知识导入
 
-目标：法律问题引用的 `source_id` **不是** `fake-*`；无命中则无引用卡片，由**已配置的 LLM**贴题作答（勿用 `hybrid` 空库硬顶）。适合 **Windows + 仅本机 `uv run` api**，不必 `docker compose --profile full`。
+主库目录：`RAG_MEMORY_DIR`（默认 `data/rag_memory`）。Domain **D** `self_test` 写入 `RAG_SELF_TEST_DIR`（默认 `data/rag_memory_self_test`），**永不**进入 `search_kb`。
 
-**验收步骤（可复制）：**
-
-```powershell
-# 在仓库根目录；先准备 .env（可从 .env.example 复制）
-# 必填低配项：
-# RETRIEVER_MODE=memory
-# INDEX_BACKEND=memory
-# RAG_MEMORY_DIR=data/rag_memory
-# IMPORT_MAX_ROWS=200
-# EMBEDDING_MODE=fake
-# HF_DATASET_ID=senry5433/china-effective-laws-regulations
-
-# 1) 小样本导入到落盘索引（约 100–200 条即可，勿全量）
-uv run python scripts/import_local_sample.py --max-rows 200 --backend memory
-
-# 2) 启动 / 重启 api（必须重启才能加载 data/rag_memory）
-cd apps/api
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# 3) Admin 试检索「劳动合同」→ source_id 非 fake-*
-# 4) C 端法律问题 → 有真实引用，或空引用 + 真模型贴题回答（需 Admin 已启用供应商）
-```
-
-可选离线数据集：
+| `--source` | 本地路径（优先） | Domain | 推荐 max_rows | 写入 |
+|------------|------------------|--------|---------------|------|
+| `interview_zh` | `data/hf/Chinese_interview_large` | `interview_qa` | 200–2000 | 主库 |
+| `dev_docs_en` | `data/hf/dev-knowledge-base/data` | `tech_docs` | 500–2000 | 主库 |
+| `hive_corpus` | `data/hf/the-hive-corpus` | `gotchas` | 50–500 | 主库 |
+| `ai_job_zh` | `data/hf/AI_Job_DataSet_1000_list` | `job_skills` | ≤1000 | 主库 |
+| `cmmlu_cs` | `data/hf/cmmlu` | `self_test` | 50–500 | **self_test 隔离** |
+| `career_all` | （组合） | A+B+C | 同上分源 | 主库；**不含 D/E** |
 
 ```powershell
-huggingface-cli download senry5433/china-effective-laws-regulations --repo-type dataset --local-dir data/hf/china-laws
-# .env: HF_DATASET_ID=data/hf/china-laws  以及 HF_DATASETS_OFFLINE=1
+# 仓库根；.env: RETRIEVER_MODE=memory INDEX_BACKEND=memory EMBEDDING_MODE=fake
+# 单源
+uv run python scripts/import_career_memory.py --source interview_zh --max-rows 500 --embedding-mode fake
+# A+B+C 组合（不含 D self_test / E job_skills）
+uv run python scripts/import_career_memory.py --source career_all --max-rows 200 --embedding-mode fake
+# 岗位技能地图（非 env；产出 data/market/role_skill_map.json）
+uv run python scripts/build_role_skill_map.py
+# 重启 api 后加载新索引
+cd apps/api; uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-- `RETRIEVER_MODE=hybrid`：需本机 Qdrant 且已导入；OpenSearch 可选（挂了则仅向量，不会 Fake 回退）
-- `RETRIEVER_MODE=fake`：仅开发占位，会出现 `fake-*`，不要当真实知识库
-- 已配置模型时：空检索走真模型「未检索到」约束作答，不再塞「合同、转账」跑题模拟稿
+Admin → Knowledge → **导入任务**：选择 source（五源）+ `max_rows`；选 `cmmlu_cs` 时自动写入 self_test 目录。Worker 对 `source==cmmlu_cs` 且未显式 `memory_dir` 时同样默认 `RAG_SELF_TEST_DIR`。
 
-## HF 法规数据集导入与免责
+- `RETRIEVER_MODE=hybrid`：需本机 Qdrant；OpenSearch 可选（不会 Fake 回退）
+- `RETRIEVER_MODE=fake`：仅开发占位（`fake-*` 引用）
+- **故意不做：** Boss/招聘站爬虫、自动投递、验证码绕过、FairCV 全量向量化
 
-**步骤：**
-
-1. `docker compose up --build`（默认不含 OpenSearch；完整 RAG 用 `--profile full`）  
-2. Admin → Knowledge → **导入任务** → 设置 `max_rows`（默认环境 `IMPORT_MAX_ROWS=200`，`0`=不截断）→ 触发导入  
-   或：
-
-```bash
-curl -s -X POST http://localhost:8000/api/admin/knowledge-import-jobs \
-  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" -d '{}'
-```
-
-3. Worker 认领 `pending` → 过滤/chunk/嵌入 → 双写 Qdrant+OpenSearch → `succeeded` + `stats`  
-4. Admin **试检索** 或 C 端发问，citation 的 `source_id` 应为真实条目 id（**非** `fake-*`）
-
-**数据范围：** HF `senry5433/china-effective-laws-regulations` / `articles`；`status==有效` 且 `category ∈ {法律, 行政法规, 司法解释}`；chunk：`《{title}》{article_no_cn} {text}`。
-
-**免责：** 回复仅供参考，不构成正式法律意见。检索依据的法规条文来自**第三方整理的数据集，非国家官方汇编、非权威发布渠道**，请以全国人大等官方来源为准。C 端页脚与 SSE `done.disclaimer` 含同口径说明。
+**免责：** 回复仅供求职/面试参考，不构成录用承诺或法律意见。C 端页脚与 SSE `done.disclaimer` 同口径。
 
 ## 总验收 checklist
 
 - [ ] `cp .env.example .env`，设置 `JWT_SECRET`；建议设置独立 `ENCRYPTION_KEY`
-- [ ] `docker compose up --build` → web `:8080` / admin `:8081` / api `:8000`；Qdrant/OpenSearch/worker 均已启动
-- [ ] Admin 配置供应商 → **测试连通** `ok: true`（或对话明确走配置模型、非 mock）
-- [ ] 触发 HF 小样本导入 → job `succeeded` → 试检索 / C 端 SSE citation 含 `law_name`、`article_no`、`text`、`source_id`，且 **`source_id` 非 `fake-*`**
-- [ ] C 端免责含数据集非官方说明；无平台 API Key / `lb_` / 开发者凭证入口
-- [ ] 普通用户 token 调 `/api/admin/*` → 403
-- [ ] `uv run pytest apps/api/tests -q`；`apps/web` 与 `apps/admin` 下 `npm run typecheck` 通过
+- [ ] `docker compose up --build` → web `:8080` / admin `:8081` / api `:8000`
+- [ ] Admin 配置供应商 → **测试连通** `ok: true`
+- [ ] Career 导入（CLI 或 Admin 五源）→ job `succeeded` → 试检索 / C 端 citation `source_id` 非 `fake-*`
+- [ ] C 端免责为职业向；无平台 API Key / `lb_` 入口；普通用户调 `/api/admin/*` → 403
+- [ ] `scripts/check_no_auto_apply.py` 通过；`apps/web` / `apps/admin` `npm run typecheck`
+
+## 附录：旧法律/民生导入（兼容，非 CareerBot 主路径）
+
+低配法律样例（遗留）：`scripts/import_local_sample.py` / `import_livelihood_memory.py`；数据集 `senry5433/china-effective-laws-regulations`。民生包按 allow/deny list 过滤后重建 `data/rag_memory`（须 `--recreate`）。CareerBot 请优先用上一节 `import_career_memory.py`。
 
 ## 本地开发（分端）
 
@@ -221,7 +229,7 @@ curl -s http://localhost:8000/api/admin/stats/overview \
 
 ### C 端 `/api/v1`（JWT user）
 
-- `POST /auth/register`、`POST /auth/login`（body.`email` 为登录账号）、`POST /auth/refresh`、`POST /auth/logout`、`GET /auth/me`、`PATCH /auth/me`（改昵称）、`POST /auth/me/password`（改密码并吊销全部 refresh）
+- `POST /auth/register`、`POST /auth/login`（`mode=password|email_code`，body.`email` 为登录邮箱）、`POST /auth/login/send`（仅邮箱，发登录验证码）、`POST /auth/refresh`、`POST /auth/logout`、`GET /auth/me`、`PATCH /auth/me`（改昵称）、`POST /auth/me/password`（改密码并吊销全部 refresh）
 - `POST /auth/me/avatar`（multipart 头像）、`DELETE /auth/me/avatar`；静态访问 `/uploads/avatars/*`
 - `POST|GET /conversations`、`GET /conversations/{id}`、`GET /conversations/{id}/messages`
 - `POST /chat`（SSE：`token` \| `citation` \| `done` \| `error`；正文为检索增强综合咨询，法条详情见 citation 卡片，正文不做法条清单）。能力边界：聚焦中国法域法律咨询；闲聊可；领域外短拒且不检索。
@@ -249,11 +257,26 @@ C 端 Web 个人中心：`/profile`（需登录），可改昵称、改密码、
 
 GitHub Actions：`.github/workflows/ci.yml`（`uv run pytest`）。前端 typecheck 在本地 checklist 中验证。
 
+## 三层记忆与 thread 契约
+
+| 层 | 作用 | 落点 |
+| --- | --- | --- |
+| Checkpointer | 同会话短期状态（槽位 / phase / missing） | `thread_id = str(conversation_id)`；Postgres 优先，失败回落 MemorySaver（`production_risk=true`，重启丢槽） |
+| 结构化槽位 | `task_goal` / `hard_constraints` / `open_questions` / `key_entities` + 换题清空 | AgentState；续补靠「请补充」或 checkpoint `phase=followup` / missing，不依赖全量 history |
+| MemoryStore | 跨会话用户级 top-K（偏好等） | `user_long_memories`；失败只打日志，对话不 500 |
+
+- **同会话**：复用 `conversation_id` → 同一 thread，槽位可续。
+- **新咨询**：新建 conversation → 新 thread，短期槽位不串；跨会话 Store 仍可按 `user_id` 注入。
+- **Prompt**：系统指令 + 槽位（不裁）+ 最近 N 轮（默认 6，由 chat 从 DB 加载）+ Store top-K + 法条；超预算先丢旧对话再丢低分 Store。
+- 删除会话时会尝试 `delete_thread_checkpoints`。Migration：`011_user_long_memories`。
+- TODO：>30 轮摘要压缩层尚未实现。
+
 ## 已知限制
 
 - 未导入或 `RETRIEVER_MODE=fake` 时：前者 citations 为空；后者才出现 `fake-*`（请改用 memory/hybrid 并导入）
 - 不含地方法规；全量约 70 万条勿在低配机跑；小样本用 `IMPORT_MAX_ROWS=100–200`
 - SSE 无断线续传；未上 K8s
+- >30 轮对话摘要压缩未做（槽位 + 最近 N + Store 已落地）
 
 ## Eval
 

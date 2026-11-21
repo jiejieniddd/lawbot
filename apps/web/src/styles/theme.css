@@ -1,0 +1,89 @@
+/* Theme layers — light keeps neo-brutal defaults from tokens.css */
+
+[data-theme='light'] {
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-ink: #f4f4f2;
+  --color-white: #1c1c1f;
+  --color-coral: #ff7a7a;
+  --color-mint: #5ee0d6;
+  --color-sunny: #ffe066;
+  --color-seafoam: #6ecfc0;
+  --color-peach: #f59a9a;
+
+  --bg: #141416;
+  --surface: #1c1c1f;
+  --text: #f4f4f2;
+  --muted: #d2d2ce;
+  --border: #f4f4f2;
+  --rail: #18181b;
+  --composer-bg: #1c1c1f;
+  --primary-soft: #3a3418;
+  --info-soft: #1f3532;
+  --danger-soft: #3a2222;
+
+  --shadow-coral: 6px 6px 0 var(--color-coral);
+  --shadow-mint: 8px 8px 0 var(--color-mint);
+  --shadow-sunny: 8px 8px 0 var(--color-sunny);
+  --shadow-ink: 4px 4px 0 #8a8a86;
+  --focus-ring: 4px 4px 0 var(--color-mint);
+
+  --el-color-primary: var(--color-coral);
+  --el-color-success: var(--color-mint);
+  --el-color-warning: var(--color-sunny);
+  --el-color-danger: var(--color-peach);
+  --el-color-info: var(--color-seafoam);
+  --el-border-color: var(--color-ink);
+  --el-border-color-hover: var(--color-ink);
+  --el-text-color-primary: var(--color-ink);
+  --el-text-color-regular: var(--color-ink);
+  --el-bg-color: var(--surface);
+  --el-fill-color-blank: var(--surface);
+  --el-bg-color-overlay: #222226;
+  --el-mask-color: rgba(0, 0, 0, 0.65);
+  --el-box-shadow: var(--shadow-mint);
+  --el-box-shadow-light: var(--shadow-coral);
+  --el-box-shadow-lighter: var(--shadow-ink);
+}
+
+[data-theme='dark'] body,
+[data-theme='dark'] #app {
+  background: var(--bg);
+  color: var(--text);
+}
+
+[data-theme='dark'] .el-button--primary {
+  --el-button-bg-color: var(--color-coral);
+  --el-button-text-color: #141416;
+  --el-button-hover-bg-color: var(--color-coral);
+  --el-button-hover-text-color: #141416;
+}
+
+[data-theme='dark'] .el-button--default,
+[data-theme='dark'] .el-button.is-plain {
+  background: var(--surface) !important;
+  color: var(--color-ink) !important;
+}
+
+[data-theme='dark'] .el-input__wrapper,
+[data-theme='dark'] .el-textarea__inner {
+  background: var(--surface) !important;
+  color: var(--color-ink) !important;
+}
+
+[data-theme='dark'] .el-message-box,
+[data-theme='dark'] .el-dialog {
+  background: var(--surface) !important;
+  color: var(--color-ink) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme='light'],
+  [data-theme='dark'] {
+    --duration-spring: 0.01ms;
+  }
+}

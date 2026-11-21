@@ -1,19 +1,58 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { AUTH_FOOTER_DISCLAIMER } from '../constants/disclaimer'
 import { useAuthStore } from '../stores/auth'
+import '../styles/auth.css'
 
 const account = ref('')
 const password = ref('')
+const code = ref('')
 const displayName = ref('')
 const loading = ref(false)
+const sending = ref(false)
+const cooldown = ref(0)
 const auth = useAuthStore()
 const router = useRouter()
 
+let timer: number | null = null
+
 function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+}
+
+function startCooldown(seconds: number) {
+  cooldown.value = Math.max(1, seconds)
+  if (timer != null) window.clearInterval(timer)
+  timer = window.setInterval(() => {
+    cooldown.value -= 1
+    if (cooldown.value <= 0 && timer != null) {
+      window.clearInterval(timer)
+      timer = null
+    }
+  }, 1000)
+}
+
+onUnmounted(() => {
+  if (timer != null) window.clearInterval(timer)
+})
+
+async function sendCode() {
+  if (!isEmail(account.value)) {
+    ElMessage.error('请输入有效邮箱')
+    return
+  }
+  sending.value = true
+  try {
+    const data = await auth.sendRegisterCode(account.value.trim())
+    ElMessage.success(data.detail)
+    startCooldown(data.retry_after_seconds || 60)
+  } catch (e) {
+    ElMessage.error((e as Error).message || '请求失败')
+  } finally {
+    sending.value = false
+  }
 }
 
 async function onSubmit() {
@@ -21,12 +60,25 @@ async function onSubmit() {
     ElMessage.error('请输入有效邮箱')
     return
   }
+  if (!/^\d{6}$/.test(code.value.trim())) {
+    ElMessage.error('请输入 6 位验证码')
+    return
+  }
+  if (password.value.length < 6 || password.value.length > 128) {
+    ElMessage.error('密码长度须为 6–128 位')
+    return
+  }
   loading.value = true
   try {
-    await auth.register(account.value, password.value, displayName.value || undefined)
+    await auth.register(
+      account.value.trim(),
+      password.value,
+      code.value.trim(),
+      displayName.value || undefined,
+    )
     router.push('/chat')
   } catch (e) {
-    ElMessage.error((e as Error).message || '账号或密码错误')
+    ElMessage.error((e as Error).message || '注册失败')
   } finally {
     loading.value = false
   }
@@ -35,26 +87,52 @@ async function onSubmit() {
 
 <template>
   <div class="auth-shell">
-    <aside class="brand-pane" aria-label="LawBot">
-      <div class="brand-mark">LawBot</div>
-      <p class="brand-line">结构化法律咨询</p>
+    <aside class="brand-pane" aria-label="CareerBot">
+      <div class="brand-mark">CareerBot</div>
+      <p class="brand-line">计算机求职助手</p>
       <p class="brand-note">创建账号后即可开始会话。我们重视可追溯引用与清晰免责说明。</p>
     </aside>
     <section class="form-pane">
       <div class="form-block">
+        <div class="sticker-row" aria-hidden="true">
+          <span class="sticker mint" />
+          <span class="sticker sunny" />
+          <span class="sticker coral" />
+        </div>
         <h1>注册</h1>
-        <p class="lead">创建账号并进入咨询工作台</p>
+        <p class="lead">邮箱验证后创建账号并进入工作台</p>
         <el-form class="auth-form" label-position="top" @submit.prevent="onSubmit">
           <el-form-item label="昵称">
             <el-input v-model="displayName" size="large" placeholder="可选" />
           </el-form-item>
           <el-form-item label="邮箱">
+            <div class="code-row">
+              <el-input
+                v-model="account"
+                type="email"
+                autocomplete="email"
+                size="large"
+                placeholder="请输入邮箱"
+              />
+              <el-button
+                native-type="button"
+                size="large"
+                :loading="sending"
+                :disabled="cooldown > 0"
+                @click="sendCode"
+              >
+                {{ cooldown > 0 ? `${cooldown}s` : '获取验证码' }}
+              </el-button>
+            </div>
+          </el-form-item>
+          <el-form-item label="验证码">
             <el-input
-              v-model="account"
-              type="email"
-              autocomplete="email"
+              v-model="code"
+              inputmode="numeric"
+              maxlength="6"
+              autocomplete="one-time-code"
               size="large"
-              placeholder="请输入邮箱"
+              placeholder="6 位数字"
             />
           </el-form-item>
           <el-form-item label="密码">
@@ -87,105 +165,29 @@ async function onSubmit() {
 </template>
 
 <style scoped>
-.auth-shell {
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: grid;
-  grid-template-columns: minmax(280px, 0.42fr) minmax(320px, 0.58fr);
-  background: var(--bg);
-}
-
-.brand-pane {
-  background: linear-gradient(
-    165deg,
-    color-mix(in srgb, var(--color-primary) 88%, #1a2332) 0%,
-    var(--color-primary) 55%,
-    color-mix(in srgb, var(--color-info) 55%, var(--color-primary)) 100%
-  );
-  color: #fff;
-  padding: clamp(2rem, 6vw, 3.5rem);
+.sticker-row {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.75rem;
+  gap: 8px;
+  margin-bottom: 16px;
+  transform: rotate(-2deg);
+  width: fit-content;
 }
 
-.brand-mark {
-  font-family: var(--font-ui);
-  font-size: var(--fs-brand);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
+.sticker {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-ink);
 }
 
-.brand-line {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 500;
-  opacity: 0.95;
+.sticker.coral {
+  background: var(--color-coral);
 }
 
-.brand-note {
-  margin: 0.5rem 0 0;
-  max-width: 28ch;
-  font-size: var(--fs-small);
-  line-height: 1.55;
-  opacity: 0.82;
+.sticker.mint {
+  background: var(--color-mint);
 }
 
-.form-pane {
-  display: grid;
-  place-items: center;
-  padding: 2rem 1.25rem;
-  background: var(--surface);
-}
-
-.form-block {
-  width: min(400px, 100%);
-}
-
-h1 {
-  margin: 0;
-  font-family: var(--font-ui);
-  font-size: var(--fs-title);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.lead {
-  margin: 0.35rem 0 1.35rem;
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
-.submit {
-  width: 100%;
-  margin-top: 0.25rem;
-}
-
-.hint {
-  margin-top: 1.1rem;
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
-.foot-note {
-  margin-top: 1.25rem;
-  font-size: var(--fs-fine);
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-@media (max-width: 840px) {
-  .auth-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-  }
-  .brand-pane {
-    padding: 1.5rem 1.25rem;
-  }
-  .brand-note {
-    display: none;
-  }
+.sticker.sunny {
+  background: var(--color-sunny);
 }
 </style>

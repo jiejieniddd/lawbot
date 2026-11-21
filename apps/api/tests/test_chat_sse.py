@@ -1,9 +1,9 @@
-def test_chat_sse_flow(client):
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "chat01@example.com", "password": "secret12"},
-    )
-    token = reg.json()["access_token"]
+from otp_helpers import register_user
+
+
+def test_chat_sse_flow(client, otp_mail):
+    reg = register_user(client, otp_mail, "chat01@example.com")
+    token = reg["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     conv = client.post("/api/v1/conversations", headers=headers, json={})

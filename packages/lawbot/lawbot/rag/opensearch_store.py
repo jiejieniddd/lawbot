@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from lawbot.knowledge.hf_import import ArticleRecord
+from lawbot.knowledge.chunk import KnowledgeChunk
 from lawbot.rag.base import RetrievedChunk
 from lawbot.rag.memory_store import citation_from_payload
 
@@ -48,12 +48,16 @@ class OpenSearchArticleStore:
                             "doc_id": {"type": "keyword"},
                             "article_no_num": {"type": "keyword"},
                             "status": {"type": "keyword"},
+                            "domain": {"type": "keyword"},
+                            "title": {"type": "text"},
+                            "source_name": {"type": "keyword"},
+                            "lang": {"type": "keyword"},
                         }
                     },
                 },
             )
 
-    def upsert(self, records: list[ArticleRecord]) -> int:
+    def upsert(self, records: list[KnowledgeChunk]) -> int:
         from opensearchpy import helpers
 
         self.ensure_index()
@@ -66,9 +70,11 @@ class OpenSearchArticleStore:
                     "_id": rec.source_id,
                     "_source": {
                         "source_id": rec.source_id,
+                        "domain": rec.domain,
+                        "title": rec.title,
                         "doc_id": rec.doc_id,
-                        "law_name": rec.law_name,
-                        "article_no": rec.article_no,
+                        "law_name": rec.law_name or rec.title,
+                        "article_no": rec.article_no or rec.category or "",
                         "article_no_num": rec.article_no_num,
                         "text": rec.text,
                         "chunk_text": rec.chunk_text,
@@ -77,6 +83,9 @@ class OpenSearchArticleStore:
                         "source_url": rec.source_url,
                         "effective_date": rec.effective_date,
                         "status": rec.status,
+                        "source_name": rec.source_name,
+                        "lang": rec.lang,
+                        "skills": rec.skills,
                     },
                 }
             )

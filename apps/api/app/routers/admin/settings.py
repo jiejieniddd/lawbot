@@ -6,6 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.deps import get_db, require_permission
+from app.services.embedding_config import (
+    EmbeddingSettingsUpdate,
+    EmbeddingTestBody,
+    get_embedding_public,
+    save_embedding_config,
+    test_embedding_connectivity,
+)
 from app.services.mail_config import MailSettingsUpdate, get_mail_config, save_mail_config
 from app.services.mailer import MailDeliveryError, send_email
 from app.services.password_reset import MAIL_DISABLED_MESSAGE, MAIL_INCOMPLETE_MESSAGE
@@ -90,3 +97,41 @@ def send_test_mail(
     except MailDeliveryError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     return {"detail": "测试邮件已发送"}
+
+
+@router.get("/embedding")
+def get_embedding_settings(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    _: User = Depends(require_permission("settings:read")),
+) -> dict:
+    return get_embedding_public(db, settings)
+
+
+@router.put("/embedding")
+def update_embedding_settings(
+    body: EmbeddingSettingsUpdate,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    _: User = Depends(require_permission("settings:write")),
+) -> dict:
+    try:
+        return save_embedding_config(db, settings, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/embedding/test")
+def test_embedding_settings(
+    body: EmbeddingTestBody | None = None,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    _: User = Depends(require_permission("settings:write")),
+) -> dict:
+    result = test_embedding_connectivity(db, settings, body)
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(result.get("detail") or "Embedding 测试失败"),
+        )
+    return result

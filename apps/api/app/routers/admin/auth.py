@@ -10,7 +10,7 @@ from app.services.rbac_out import user_to_out
 from app.services.tokens import issue_token_pair, revoke_refresh_token, rotate_refresh_token
 from lawbot.db.models import User
 from lawbot.domain.schemas import (
-    LoginRequest,
+    AdminLoginRequest,
     LogoutRequest,
     RefreshRequest,
     TokenResponse,
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/auth", tags=["admin-auth"])
 
 @router.post("/login", response_model=TokenResponse)
 def admin_login(
-    body: LoginRequest,
+    body: AdminLoginRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> TokenResponse:

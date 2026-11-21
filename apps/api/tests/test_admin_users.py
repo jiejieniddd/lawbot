@@ -21,13 +21,11 @@ def test_list_users_requires_role(client, admin_user):
     assert resp.status_code == 422
 
 
-def test_list_users_filtered_by_role(client, admin_user):
+def test_list_users_filtered_by_role(client, admin_user, otp_mail):
+    from otp_helpers import register_user
+
     headers = _root_headers(client, admin_user)
-    reg = client.post(
-        "/api/v1/auth/register",
-        json={"email": "client1@example.com", "password": "secret12"},
-    )
-    assert reg.status_code == 200
+    register_user(client, otp_mail, "client1@example.com")
 
     users = client.get("/api/admin/users", headers=headers, params={"role": "user"})
     assert users.status_code == 200
@@ -74,7 +72,7 @@ def test_admin_with_manage_can_create_admin(client, admin_user, normal_admin):
     assert login.status_code == 200
 
 
-def test_create_client_by_admin_and_root(client, admin_user, normal_admin):
+def test_create_client_by_admin_and_root(client, admin_user, normal_admin, otp_mail):
     ops = _ops_headers(client, normal_admin)
     created = client.post(
         "/api/admin/users/clients",
@@ -92,11 +90,10 @@ def test_create_client_by_admin_and_root(client, admin_user, normal_admin):
     assert dup.status_code == 400
 
     # C-end login ok; admin login rejected
-    user_login = client.post(
-        "/api/v1/auth/login",
-        json={"email": "newuser01@example.com", "password": "secret12"},
-    )
-    assert user_login.status_code == 200
+    from otp_helpers import login_user
+
+    user_login = login_user(client, otp_mail, "newuser01@example.com", "secret12")
+    assert user_login["access_token"]
     admin_login = client.post(
         "/api/admin/auth/login",
         json={"email": "newuser01@example.com", "password": "secret12"},
@@ -198,15 +195,116 @@ def test_admin_me_returns_role(client, admin_user, normal_admin):
     assert me2.json()["role"] == "admin"
 
 
-def test_stats_split_counts(client, admin_user):
+def test_stats_split_counts(client, admin_user, otp_mail):
+    from otp_helpers import register_user
+
     headers = _root_headers(client, admin_user)
-    client.post(
-        "/api/v1/auth/register",
-        json={"email": "stat_user@example.com", "password": "secret12"},
-    )
+    register_user(client, otp_mail, "stat_user@example.com")
     overview = client.get("/api/admin/stats/overview", headers=headers)
     assert overview.status_code == 200
     body = overview.json()
     assert body["end_users"] >= 1
     assert body["admins"] >= 1
     assert body["users"] == body["end_users"] + body["admins"]
+
+
+def test_hard_delete_client_cascades_conversations(client, admin_user, db_session):
+    from uuid import UUID
+
+    from sqlalchemy import func, select
+
+    from lawbot.db.models import Conversation, Message, User
+    from lawbot.domain.schemas import MessageRole
+
+    root = _root_headers(client, admin_user)
+    created = client.post(
+        "/api/admin/users/clients",
+        headers=root,
+        json={"email": "wipe_me@example.com", "password": "secret12", "display_name": "Wipe"},
+    )
+    assert created.status_code == 201, created.text
+    target_id = UUID(created.json()["id"])
+
+    conv = Conversation(user_id=target_id, title="待删会话")
+    db_session.add(conv)
+    db_session.flush()
+    db_session.add(
+        Message(
+            conversation_id=conv.id,
+            role=MessageRole.USER,
+            content="hello",
+            citations=[],
+        )
+    )
+    db_session.commit()
+    conv_id = conv.id
+
+    deleted = client.delete(f"/api/admin/users/{target_id}", headers=root)
+    assert deleted.status_code == 204, deleted.text
+
+    listed = client.get("/api/admin/users", headers=root, params={"role": "user"})
+    assert listed.status_code == 200
+    assert all(u["id"] != str(target_id) for u in listed.json())
+    db_session.expire_all()
+    assert db_session.get(User, target_id) is None
+    assert db_session.get(Conversation, conv_id) is None
+    left = db_session.scalar(
+        select(func.count()).select_from(Message).where(Message.conversation_id == conv_id)
+    )
+    assert left == 0
+
+
+def test_hard_delete_rejects_admin_and_root(client, admin_user, normal_admin):
+    root = _root_headers(client, admin_user)
+    admins = client.get("/api/admin/users", headers=root, params={"role": "admin"}).json()
+    root_row = next(u for u in admins if u["email"] == "root")
+    ops_row = next(u for u in admins if u["email"] == "ops@lawbot.local")
+
+    forbid_root = client.delete(f"/api/admin/users/{root_row['id']}", headers=root)
+    assert forbid_root.status_code == 400
+    assert "种子超级管理员" in forbid_root.json()["detail"] or "C 端用户" in forbid_root.json()["detail"]
+
+    forbid_admin = client.delete(f"/api/admin/users/{ops_row['id']}", headers=root)
+    assert forbid_admin.status_code == 400
+    assert "只能硬删除 C 端用户" in forbid_admin.json()["detail"]
+
+
+def test_hard_delete_requires_permission(client, admin_user, db_session):
+    from lawbot.db.models import User
+    from lawbot.domain.schemas import UserRole
+    from lawbot.rbac.service import ensure_user_has_role
+    from lawbot.security import hash_password
+
+    root = _root_headers(client, admin_user)
+    created = client.post(
+        "/api/admin/users/clients",
+        headers=root,
+        json={"email": "keep_me@example.com", "password": "secret12"},
+    )
+    assert created.status_code == 201
+    target_id = created.json()["id"]
+
+    operator = User(
+        email="operator@lawbot.local",
+        password_hash=hash_password("OpsPass12"),
+        display_name="Operator",
+        role=UserRole.OPERATOR,
+    )
+    db_session.add(operator)
+    db_session.flush()
+    ensure_user_has_role(db_session, operator, UserRole.OPERATOR)
+    db_session.commit()
+
+    op_headers = _login(client, "operator@lawbot.local", "OpsPass12")
+    denied = client.delete(f"/api/admin/users/{target_id}", headers=op_headers)
+    assert denied.status_code == 403
+
+    # disable still works for admins with user:disable
+    ops = _login(client, "root", "Admin123!")
+    still = client.patch(
+        f"/api/admin/users/{target_id}",
+        headers=ops,
+        json={"disabled": True},
+    )
+    assert still.status_code == 200
+    assert still.json()["disabled"] is True

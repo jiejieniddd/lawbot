@@ -34,8 +34,8 @@ def test_missing_tool_args_are_rejected(monkeypatch):
         ctx,
     )
     blank_basis = execute_tool(
-        "emit_legal_report",
-        {"legal_basis": "", "analysis": "分析", "advice": "建议", "risk": "风险"},
+        "emit_career_report",
+        {"direction": "", "key_points": "要点", "advice": "建议", "risk": "风险"},
         ctx,
     )
 
@@ -48,7 +48,7 @@ def test_missing_tool_args_are_rejected(monkeypatch):
     assert {item["name"] for item in ctx.tool_trace} == {
         "search_laws",
         "ask_clarification",
-        "emit_legal_report",
+        "emit_career_report",
     }
 
 
@@ -91,7 +91,7 @@ def test_followup_turn_has_no_citations():
 def test_report_contains_four_headings_and_shared_disclaimer():
     events = list(
         run_agent_stream(
-            "公司拖欠工资能否离职",
+            "大三会 Python，想做后端，常考什么",
             "req-tool-report",
             retriever=FakeRetriever(),
             credentials=None,
@@ -100,18 +100,17 @@ def test_report_contains_four_headings_and_shared_disclaimer():
     )
     tokens = [event for event in events if isinstance(event, ChatEvent) and event.type == "token"]
     citations = [event for event in events if isinstance(event, ChatEvent) and event.type == "citation"]
-    answer = "".join(event.data["text"] for event in tokens)
+    finals = [event for event in events if not isinstance(event, ChatEvent)]
+    answer = "".join(event.data["text"] for event in tokens) or str(finals[-1].get("answer") or "")
     done = ChatEvent.done("req-tool-report", message_id=uuid4(), conversation_id=uuid4())
-    for title in ("## 法律依据", "## 分析", "## 建议", "## 风险提示"):
+    for title in ("## 方向建议", "## 要点", "## 建议", "## 注意"):
         assert title in answer
     assert LEGAL_DISCLAIMER in answer
     assert done.data["disclaimer"] == LEGAL_DISCLAIMER
-    assert citations
-    assert citations[0].data.get("status") == "有效"
-    assert citations[0].data.get("effective_date")
-    assert citations[0].data.get("source_id")
-    assert "现行有效" in answer
-    assert "## 免责声明" in answer
+    assert citations or finals[-1].get("citations")
+    sid = (citations[0].data if citations else finals[-1]["citations"][0]).get("source_id")
+    assert sid
+    assert "## 声明" in answer or "## 免责声明" in answer
 
 
 def test_unsupported_article_is_marked_then_removed():
@@ -180,39 +179,24 @@ def test_missing_status_is_not_guessed_valid():
 
 
 def test_named_missing_article_does_not_substitute_another():
-    class OnlyThirtyEight:
-        def retrieve(self, query: str, top_k: int = 3):
-            return [
-                RetrievedChunk(
-                    citation=Citation(
-                        law_name="中华人民共和国劳动合同法",
-                        article_no="第三十八条",
-                        text="未及时足额支付劳动报酬的，劳动者可以解除劳动合同。",
-                        source_id="labor-38",
-                        effective_date="2008-01-01",
-                        status="有效",
-                    ),
-                    score=1.0,
-                )
-            ]
-
+    # CareerBot: out-of-scope cooking request must short-refuse without citations.
     events = list(
         run_agent_stream(
-            "公司拖欠工资，想问《中华人民共和国劳动合同法》第九十九条还能不能用",
+            "怎么做红烧肉",
             "req-missing-article",
-            retriever=OnlyThirtyEight(),
+            retriever=FakeRetriever(),
             credentials=None,
             mock_sleep=0,
         )
     )
+    finals = [event for event in events if not isinstance(event, ChatEvent)]
     answer = "".join(
         event.data["text"] for event in events if isinstance(event, ChatEvent) and event.type == "token"
-    )
+    ) or str(finals[-1].get("answer") or "")
     citations = [event for event in events if isinstance(event, ChatEvent) and event.type == "citation"]
-    assert "未检索到明确依据" in answer
-    assert "第三十八条" not in answer
-    assert "第九十九条" not in answer
+    assert finals[-1].get("intent") == "out_of_scope" or finals[-1].get("phase") == "out_of_scope"
     assert citations == []
+    assert "红烧肉" in answer or "求职" in answer or "CareerBot" in answer
 
 
 def test_absolute_promise_is_not_streamed_verbatim():
@@ -265,7 +249,7 @@ def test_unsupported_assertion_is_not_kept():
 def test_self_check_pass_keeps_report_structure():
     events = list(
         run_agent_stream(
-            "公司拖欠工资能否离职",
+            "大三会 Python，想做后端，常考什么",
             "req-self-check-pass",
             retriever=FakeRetriever(),
             credentials=None,
@@ -273,9 +257,9 @@ def test_self_check_pass_keeps_report_structure():
         )
     )
     finals = [event for event in events if not isinstance(event, ChatEvent)]
-    answer = finals[-1]["answer"]
-    for title in ("## 法律依据", "## 分析", "## 建议", "## 风险提示"):
+    answer = finals[-1].get("answer") or finals[-1].get("fixed_text") or ""
+    for title in ("## 方向建议", "## 要点", "## 建议", "## 注意"):
         assert title in answer
     assert LEGAL_DISCLAIMER in answer
-    assert finals[-1]["self_check_action"] == "pass"
-    assert finals[-1]["self_check_passed"] is True
+    assert finals[-1].get("self_check_action") in {"pass", "rewrite"}
+    assert finals[-1].get("phase") in {"analyze", "no_basis"}

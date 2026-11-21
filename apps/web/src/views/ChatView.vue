@@ -1,13 +1,23 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Promotion } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ChatDotRound, Close, Delete, Document, Paperclip, Promotion, Setting } from '@element-plus/icons-vue'
 import { api, streamChat, type ChatEvent, type Citation } from '../api/client'
 import CitationCard from '../components/CitationCard.vue'
-import { LEGAL_DISCLAIMER } from '../constants/disclaimer'
+import SettingsModal from '../components/settings/SettingsModal.vue'
+import PixelToggle from '../components/theme/PixelToggle.vue'
+import { CAREER_DISCLAIMER } from '../constants/disclaimer'
 import { useAuthStore } from '../stores/auth'
+import { useJdStore } from '../stores/jd'
+import { useResumeStore } from '../stores/resume'
+import { useThemeStore } from '../stores/theme'
 import { renderMarkdown } from '../utils/markdown'
+import {
+  RESUME_ACCEPT,
+  formatResumeUploadMessage,
+  validateResumeFile,
+} from '../utils/resumeFile'
 
 type Conversation = { id: string; title: string; status: string }
 type Message = {
@@ -18,6 +28,9 @@ type Message = {
 }
 
 const auth = useAuthStore()
+const resumeStore = useResumeStore()
+const jdStore = useJdStore()
+const themeStore = useThemeStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -27,12 +40,27 @@ const input = ref('')
 const sending = ref(false)
 const loadingList = ref(false)
 const loadingMessages = ref(false)
+const deletingId = ref('')
 const streamingText = ref('')
 const streamingCitations = ref<Citation[]>([])
-const disclaimer = LEGAL_DISCLAIMER
+const streamStatus = ref('正在检索…')
+const showStreamStatus = ref(true)
+const disclaimer = CAREER_DISCLAIMER
 const messagesEl = ref<HTMLElement | null>(null)
 const messagesEndEl = ref<HTMLElement | null>(null)
 const railOpen = ref(false)
+const settingsOpen = ref(false)
+const resumeFileInput = ref<HTMLInputElement | null>(null)
+const removingResume = ref(false)
+
+const resumeAttachLabel = computed(() => {
+  const row = resumeStore.active
+  if (!row) return ''
+  return row.filename || resumeStore.badgeLabel
+})
+
+/** Idle watchdog: align with backend LLM_STREAM_IDLE_SECONDS (120s) + buffer. */
+const STREAM_IDLE_MS = 180_000
 
 const activeId = computed(() => (route.params.id as string) || '')
 const isStreaming = computed(() => sending.value)
@@ -99,6 +127,58 @@ async function createConversation() {
   }
 }
 
+function chineseErrorMessage(err: unknown, fallback: string): string {
+  let raw = ''
+  if (typeof err === 'string') raw = err.trim()
+  else if (err && typeof err === 'object' && 'message' in err) {
+    raw = String((err as { message: unknown }).message || '').trim()
+  }
+  if (!raw) return fallback
+  // fetch/abort noise from Chrome etc. — never surface English network strings
+  if (
+    /failed to fetch|networkerror|load failed|aborted|bodystreambuffer|the user aborted/i.test(
+      raw,
+    )
+  ) {
+    return fallback
+  }
+  if (/internal server error|request failed|^error$/i.test(raw) && !/[\u4e00-\u9fff]/.test(raw)) {
+    return fallback
+  }
+  return raw
+}
+
+async function deleteConversation(id: string, e?: Event) {
+  e?.stopPropagation()
+  if (deletingId.value) return
+  try {
+    await ElMessageBox.confirm('删除后无法恢复', '确定删除该会话？', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      confirmButtonClass: 'el-button--danger',
+    })
+  } catch {
+    return
+  }
+  deletingId.value = id
+  try {
+    await api(`/api/v1/conversations/${id}`, { method: 'DELETE' })
+    conversations.value = conversations.value.filter((c) => c.id !== id)
+    ElMessage.success('已删除')
+    if (activeId.value === id) {
+      messages.value = []
+      streamingText.value = ''
+      streamingCitations.value = []
+      await router.push('/chat')
+    }
+  } catch (err) {
+    ElMessage.error(chineseErrorMessage(err, '删除失败'))
+  } finally {
+    deletingId.value = ''
+  }
+}
+
 function onComposerKeydown(e: KeyboardEvent) {
   if (e.isComposing || e.keyCode === 229) return
   if (e.key !== 'Enter') return
@@ -132,36 +212,90 @@ async function send() {
   sending.value = true
   streamingText.value = ''
   streamingCitations.value = []
+  streamStatus.value = '正在检索…'
+  showStreamStatus.value = true
   scrollToBottom()
 
+  const controller = new AbortController()
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
+  const clearIdle = () => {
+    if (idleTimer != null) {
+      clearTimeout(idleTimer)
+      idleTimer = null
+    }
+  }
+  const bumpIdle = () => {
+    clearIdle()
+    idleTimer = setTimeout(() => {
+      controller.abort()
+    }, STREAM_IDLE_MS)
+  }
+  bumpIdle()
+
   try {
-    await streamChat(cid, content, (ev: ChatEvent) => {
-      if (ev.type === 'token') {
-        streamingText.value += String(ev.data.text || '')
-        scrollToBottom()
-      } else if (ev.type === 'citation') {
-        streamingCitations.value.push(ev.data as unknown as Citation)
-        scrollToBottom()
-      } else if (ev.type === 'done') {
-        messages.value.push({
-          id: String(ev.data.message_id || ''),
-          role: 'assistant',
-          content: streamingText.value,
-          citations: [...streamingCitations.value],
-        })
-        streamingText.value = ''
-        streamingCitations.value = []
-        scrollToBottom()
-        void loadConversations()
-      } else if (ev.type === 'error') {
-        ElMessage.error(String(ev.data.message || 'error'))
-        streamingText.value = ''
-        streamingCitations.value = []
-      }
-    })
+    await streamChat(
+      cid,
+      content,
+      (ev: ChatEvent) => {
+        bumpIdle()
+        if (ev.type === 'status') {
+          const msg = String(ev.data.message || '').trim()
+          if (msg) streamStatus.value = msg
+        } else if (ev.type === 'token') {
+          showStreamStatus.value = false
+          streamingText.value += String(ev.data.text || '')
+          scrollToBottom()
+        } else if (ev.type === 'citation') {
+          streamingCitations.value.push(ev.data as unknown as Citation)
+          scrollToBottom()
+        } else if (ev.type === 'done') {
+          messages.value.push({
+            id: String(ev.data.message_id || ''),
+            role: 'assistant',
+            content: streamingText.value,
+            citations: [...streamingCitations.value],
+          })
+          streamingText.value = ''
+          streamingCitations.value = []
+          showStreamStatus.value = false
+          scrollToBottom()
+          void loadConversations()
+        } else if (ev.type === 'error') {
+          ElMessage.error(chineseErrorMessage(ev.data.message, '生成失败，请稍后重试'))
+          streamingText.value = ''
+          streamingCitations.value = []
+          showStreamStatus.value = false
+        }
+      },
+      { signal: controller.signal },
+    )
   } catch (e) {
-    ElMessage.error((e as Error).message)
+    const aborted = controller.signal.aborted
+    const partial = streamingText.value.trim()
+    if (partial) {
+      messages.value.push({
+        role: 'assistant',
+        content: streamingText.value,
+        citations: [...streamingCitations.value],
+      })
+      ElMessage.warning('生成超时，内容可能不完整')
+      streamingText.value = ''
+      streamingCitations.value = []
+      showStreamStatus.value = false
+      scrollToBottom()
+    } else {
+      // Prefer explicit Chinese for abort/network; never toast raw "Failed to fetch".
+      ElMessage.error(
+        aborted
+          ? '生成超时，请稍后重试'
+          : chineseErrorMessage(e, '生成失败，请稍后重试'),
+      )
+      streamingText.value = ''
+      streamingCitations.value = []
+      showStreamStatus.value = false
+    }
   } finally {
+    clearIdle()
     sending.value = false
   }
 }
@@ -171,9 +305,52 @@ async function logout() {
   router.push('/login')
 }
 
+function openResumePicker() {
+  if (resumeStore.uploading || removingResume.value) return
+  resumeFileInput.value?.click()
+}
+
+async function onResumeFileChange(e: Event) {
+  const inputEl = e.target as HTMLInputElement
+  const file = inputEl.files?.[0]
+  inputEl.value = ''
+  if (!file) return
+
+  const err = validateResumeFile(file)
+  if (err) {
+    ElMessage.error(err)
+    return
+  }
+
+  try {
+    const row = await resumeStore.upload(file)
+    const toast = formatResumeUploadMessage(row)
+    if (toast.type === 'warning') ElMessage.warning(toast.message)
+    else ElMessage.success(toast.message)
+  } catch (err) {
+    ElMessage.error((err as Error).message || '简历上传失败')
+  }
+}
+
+async function removeActiveResume() {
+  const id = resumeStore.active?.id
+  if (!id || removingResume.value || resumeStore.uploading) return
+  removingResume.value = true
+  try {
+    await resumeStore.remove(id)
+    ElMessage.success('已删除当前简历')
+  } catch (err) {
+    ElMessage.error((err as Error).message || '删除失败')
+  } finally {
+    removingResume.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     await auth.fetchMe()
+    await resumeStore.fetchActive().catch(() => undefined)
+    await jdStore.fetchActive().catch(() => undefined)
   } catch (e) {
     ElMessage.error((e as Error).message || '获取用户信息失败')
   }
@@ -188,6 +365,19 @@ watch(
     else messages.value = []
   },
 )
+
+watch(
+  () => route.query.settings,
+  (value) => {
+    if (value === '1' || value === 'true') {
+      settingsOpen.value = true
+      const nextQuery = { ...route.query }
+      delete nextQuery.settings
+      void router.replace({ path: route.path, query: nextQuery })
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -195,23 +385,36 @@ watch(
     <div v-if="railOpen" class="rail-backdrop" @click="railOpen = false" />
     <aside class="rail">
       <div class="rail-chrome">
-        <div class="rail-brand">LawBot</div>
+        <div class="rail-brand">
+          <span class="brand-text">CareerBot</span>
+          <span class="brand-badge" aria-hidden="true" />
+        </div>
         <el-button type="primary" class="new-chat" @click="createConversation">新咨询</el-button>
       </div>
       <div v-loading="loadingList" class="session-list">
         <p v-if="!loadingList && conversations.length === 0" class="empty-hint">
           暂无会话，点击「新咨询」开始
         </p>
-        <button
+        <div
           v-for="c in conversations"
           :key="c.id"
-          type="button"
           class="session"
           :class="{ active: c.id === activeId }"
-          @click="openConversation(c.id)"
         >
-          {{ c.title }}
-        </button>
+          <button type="button" class="session-open" @click="openConversation(c.id)">
+            <el-icon class="session-icon" :size="14"><ChatDotRound /></el-icon>
+            <span class="session-title">{{ c.title }}</span>
+          </button>
+          <button
+            type="button"
+            class="session-delete"
+            :disabled="deletingId === c.id"
+            :aria-label="`删除会话 ${c.title}`"
+            @click="deleteConversation(c.id, $event)"
+          >
+            <el-icon :size="14"><Delete /></el-icon>
+          </button>
+        </div>
       </div>
       <div class="rail-foot rail-chrome">
         <div class="identity">
@@ -221,7 +424,10 @@ watch(
           </div>
           <div class="identity-text">
             <div class="name">{{ displayLabel }}</div>
-            <router-link class="profile-link" to="/profile">个人中心</router-link>
+            <button type="button" class="profile-link" @click="settingsOpen = true">
+              <el-icon :size="14"><Setting /></el-icon>
+              设置
+            </button>
           </div>
         </div>
         <el-button text type="danger" @click="logout">退出</el-button>
@@ -233,50 +439,87 @@ watch(
         <button type="button" class="rail-toggle" aria-label="会话列表" @click="railOpen = !railOpen">
           会话
         </button>
-        <h1 class="stage-title">法律咨询</h1>
-        <router-link class="stage-user" to="/profile">
-          <span class="avatar sm" aria-hidden="true">
-            <img v-if="avatarSrc" :src="avatarSrc" alt="" />
-            <span v-else>{{ avatarInitial }}</span>
-          </span>
-          {{ displayLabel }}
-        </router-link>
+        <h1 class="stage-title">求职助手</h1>
+        <button
+          v-if="resumeStore.badgeLabel"
+          type="button"
+          class="resume-chip"
+          title="打开设置上传/管理简历"
+          @click="settingsOpen = true"
+        >
+          <el-icon :size="14"><Document /></el-icon>
+          {{ resumeStore.badgeLabel }}
+        </button>
+        <button
+          v-if="jdStore.badgeLabel"
+          type="button"
+          class="resume-chip mint"
+          title="打开设置上传/管理 JD"
+          @click="settingsOpen = true"
+        >
+          <el-icon :size="14"><Document /></el-icon>
+          {{ jdStore.badgeLabel }}
+        </button>
+        <div class="stage-bar-actions">
+          <PixelToggle
+            :checked="themeStore.isLight"
+            :height="44"
+            :sound="true"
+            @update:checked="themeStore.setLight"
+          />
+          <button type="button" class="stage-user" @click="settingsOpen = true">
+            <span class="avatar sm" aria-hidden="true">
+              <img v-if="avatarSrc" :src="avatarSrc" alt="" />
+              <span v-else>{{ avatarInitial }}</span>
+            </span>
+            {{ displayLabel }}
+          </button>
+        </div>
       </header>
 
-      <div ref="messagesEl" v-loading="loadingMessages" class="thread">
-        <p v-if="!loadingMessages && !messages.length && !isStreaming" class="thread-empty">
-          发送一条消息开始咨询
-        </p>
-        <article v-for="(m, i) in messages" :key="m.id || i" class="turn" :class="m.role">
-          <div
-            v-if="m.role === 'assistant'"
-            class="speech assistant md-body"
-            v-html="renderMarkdown(m.content)"
-          />
-          <div v-else class="speech user">{{ m.content }}</div>
-          <div v-if="m.citations?.length" class="cites">
-            <CitationCard v-for="c in m.citations" :key="c.source_id" :citation="c" />
+      <div ref="messagesEl" v-loading="loadingMessages" class="thread-scroll">
+        <div class="thread">
+          <div v-if="!loadingMessages && !messages.length && !isStreaming" class="thread-empty">
+            <div class="sticker-cluster" aria-hidden="true">
+              <span class="sticker coral" />
+              <span class="sticker mint" />
+              <span class="sticker sunny" />
+              <span class="sticker round seafoam" />
+            </div>
+            <p class="empty-title">发一条，开聊</p>
+            <p class="empty-sub">用大白话说说你遇到的事</p>
           </div>
-        </article>
-        <article v-if="isStreaming" class="turn assistant">
-          <div
-            v-if="streamingText"
-            class="speech assistant md-body"
-            v-html="renderMarkdown(streamingText)"
-          />
-          <div class="stream-live" aria-live="polite">
-            <span class="stream-dot" />
-            生成中
-          </div>
-          <div v-if="streamingCitations.length" class="cites">
-            <CitationCard
-              v-for="c in streamingCitations"
-              :key="c.source_id"
-              :citation="c"
+          <article v-for="(m, i) in messages" :key="m.id || i" class="turn" :class="m.role">
+            <div
+              v-if="m.role === 'assistant'"
+              class="speech assistant md-body"
+              v-html="renderMarkdown(m.content)"
             />
-          </div>
-        </article>
-        <div ref="messagesEndEl" class="thread-end" aria-hidden="true" />
+            <div v-else class="speech user">{{ m.content }}</div>
+            <div v-if="m.citations?.length" class="cites">
+              <CitationCard v-for="c in m.citations" :key="c.source_id" :citation="c" />
+            </div>
+          </article>
+          <article v-if="isStreaming" class="turn assistant">
+            <div
+              v-if="streamingText"
+              class="speech assistant md-body"
+              v-html="renderMarkdown(streamingText)"
+            />
+            <div v-if="showStreamStatus || !streamingText" class="stream-live" aria-live="polite">
+              <span class="stream-dot" />
+              {{ streamStatus }}
+            </div>
+            <div v-if="streamingCitations.length" class="cites">
+              <CitationCard
+                v-for="c in streamingCitations"
+                :key="c.source_id"
+                :citation="c"
+              />
+            </div>
+          </article>
+          <div ref="messagesEndEl" class="thread-end" aria-hidden="true" />
+        </div>
       </div>
 
       <div class="composer-dock">
@@ -285,27 +528,66 @@ watch(
             v-model="input"
             class="composer-input"
             type="textarea"
-            :autosize="{ minRows: 2, maxRows: 6 }"
+            :autosize="{ minRows: 1, maxRows: 5 }"
             :disabled="sending"
             placeholder="用大白话说说你遇到的事…"
             @keydown="onComposerKeydown"
           />
-          <el-button
-            class="composer-send"
-            type="primary"
-            circle
-            :loading="sending"
-            :disabled="sending || !input.trim()"
-            aria-label="发送"
-            @click="send"
-          >
-            <el-icon v-if="!sending"><Promotion /></el-icon>
-          </el-button>
+          <div class="composer-toolbar">
+            <div class="composer-toolbar-left">
+              <input
+                ref="resumeFileInput"
+                class="resume-file-input"
+                type="file"
+                :accept="RESUME_ACCEPT"
+                tabindex="-1"
+                @change="onResumeFileChange"
+              />
+              <button
+                type="button"
+                class="attach-btn"
+                :disabled="resumeStore.uploading || removingResume"
+                :aria-label="resumeStore.uploading ? '简历上传中' : '上传简历'"
+                :title="resumeStore.uploading ? '解析中…' : '上传简历（PDF / DOCX / PNG）'"
+                @click="openResumePicker"
+              >
+                <el-icon :size="18"><Paperclip /></el-icon>
+              </button>
+              <div v-if="resumeStore.active" class="resume-attach-chip">
+                <el-icon class="resume-attach-icon" :size="14"><Document /></el-icon>
+                <span class="resume-attach-text" :title="resumeStore.badgeLabel || resumeAttachLabel">
+                  {{ resumeAttachLabel }}
+                </span>
+                <button
+                  type="button"
+                  class="resume-attach-remove"
+                  :disabled="resumeStore.uploading || removingResume"
+                  aria-label="移除当前简历"
+                  @click="removeActiveResume"
+                >
+                  <el-icon :size="12"><Close /></el-icon>
+                </button>
+              </div>
+              <span v-else-if="resumeStore.uploading" class="resume-attach-hint">解析中…</span>
+            </div>
+            <el-button
+              class="composer-send"
+              type="primary"
+              :loading="sending"
+              :disabled="sending || !input.trim()"
+              aria-label="发送"
+              @click="send"
+            >
+              <el-icon v-if="!sending"><Promotion /></el-icon>
+              <span v-if="!sending">发送</span>
+            </el-button>
+          </div>
         </div>
         <p class="disclaimer" :title="disclaimer">{{ disclaimer }}</p>
       </div>
     </section>
   </div>
+  <SettingsModal v-model:open="settingsOpen" />
 </template>
 
 <style scoped>
@@ -315,18 +597,18 @@ watch(
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--color-white);
 }
 
 .rail {
-  background: var(--rail);
-  border-right: 1px solid var(--border);
+  background: var(--color-white);
+  border-right: 4px solid var(--color-ink);
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  padding: 1rem 0.85rem;
-  gap: 0.65rem;
+  padding: var(--spacing-16);
+  gap: var(--spacing-16);
   z-index: 20;
 }
 
@@ -335,12 +617,28 @@ watch(
 }
 
 .rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--spacing-16);
+  transform: rotate(-2deg);
+}
+
+.brand-text {
   font-family: var(--font-ui);
-  font-weight: 700;
-  font-size: 1.2rem;
+  font-weight: var(--font-weight-black);
+  font-size: 28px;
   letter-spacing: -0.03em;
-  color: var(--color-primary);
-  margin-bottom: 0.55rem;
+  line-height: 1;
+  color: var(--color-ink);
+}
+
+.brand-badge {
+  width: 14px;
+  height: 14px;
+  background: var(--color-sunny);
+  border: 2px solid var(--color-ink);
+  flex-shrink: 0;
 }
 
 .new-chat {
@@ -353,54 +651,125 @@ watch(
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .empty-hint {
-  margin: 1rem 0.4rem;
-  color: var(--muted);
-  font-size: var(--fs-small);
+  margin: var(--spacing-16) 0;
+  color: var(--color-ink);
+  font-size: var(--text-label);
+  font-weight: var(--font-weight-bold);
   line-height: 1.45;
+  border: 2px solid var(--color-ink);
+  padding: 12px;
+  background: var(--color-sunny);
+  box-shadow: 4px 4px 0 var(--color-ink);
+  transform: rotate(-1deg);
 }
 
 .session {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  padding: 0.55rem 0.65rem;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--fs-small);
-  color: var(--text);
-  line-height: 1.35;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 2px solid transparent;
+  color: var(--color-ink);
+  background: var(--color-white);
+  transition:
+    transform var(--duration-spring) var(--ease-spring),
+    box-shadow var(--duration-spring) var(--ease-spring),
+    background-color var(--duration-spring) var(--ease-spring);
 }
 
 .session:hover {
-  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  background: var(--color-sunny);
+  border-color: var(--color-ink);
+  box-shadow: 4px 4px 0 var(--color-mint);
+  transform: rotate(1deg);
 }
 
 .session.active {
-  background: var(--primary-soft);
-  color: var(--color-primary);
-  font-weight: 600;
+  background: var(--color-coral);
+  color: var(--color-white);
+  border-color: var(--color-ink);
+  box-shadow: 4px 4px 0 var(--color-ink);
+  transform: rotate(-1deg);
+}
+
+.session-open {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--font-weight-bold);
+  color: inherit;
+  line-height: 1.35;
+}
+
+.session-icon {
+  flex-shrink: 0;
+}
+
+.session-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-delete {
+  appearance: none;
+  border: 2px solid transparent;
+  background: transparent;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.4;
+}
+
+.session:hover .session-delete,
+.session.active .session-delete {
+  opacity: 1;
+}
+
+.session-delete:hover:not(:disabled) {
+  border-color: var(--color-ink);
+  background: var(--color-white);
+  color: var(--color-peach);
+}
+
+.session-delete:disabled {
+  cursor: wait;
+  opacity: 0.4;
 }
 
 .rail-foot {
   margin-top: auto;
-  padding-top: 0.65rem;
-  border-top: 1px solid var(--border);
+  padding-top: var(--spacing-16);
+  border-top: 4px solid var(--color-ink);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: var(--spacing-8);
 }
 
 .identity {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 10px;
   min-width: 0;
   flex: 1;
 }
@@ -410,39 +779,53 @@ watch(
 }
 
 .name {
-  font-size: var(--fs-small);
-  font-weight: 500;
+  font-size: var(--text-label);
+  font-weight: var(--font-weight-black);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .profile-link {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
   font-size: var(--fs-fine);
-  text-decoration: none;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-mint);
+  cursor: pointer;
+  text-align: left;
 }
 
 .profile-link:hover {
-  text-decoration: underline;
+  color: var(--color-coral);
 }
 
 .avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border-radius: 0;
   overflow: hidden;
   flex-shrink: 0;
-  background: var(--primary-soft);
-  color: var(--color-primary);
-  font-size: 0.75rem;
-  font-weight: 700;
+  background: var(--color-sunny);
+  border: 2px solid var(--color-ink);
+  color: var(--color-ink);
+  font-size: 12px;
+  font-weight: var(--font-weight-black);
   display: grid;
   place-items: center;
+  box-shadow: 3px 3px 0 var(--color-mint);
 }
 
 .avatar.sm {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
+  box-shadow: 2px 2px 0 var(--color-coral);
 }
 
 .avatar img {
@@ -458,73 +841,214 @@ watch(
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--color-white);
 }
 
 .stage-bar {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.85rem 1.25rem;
-  border-bottom: 1px solid var(--border);
+  gap: var(--spacing-16);
+  padding: var(--spacing-16) var(--spacing-24);
+  border-bottom: 4px solid var(--color-ink);
   background: var(--surface);
+}
+
+.stage-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  flex-shrink: 0;
+  max-width: min(280px, 46vw);
 }
 
 .rail-toggle {
   display: none;
   appearance: none;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  border-radius: var(--radius-sm);
-  padding: 0.35rem 0.65rem;
+  border: 4px solid var(--color-ink);
+  background: var(--color-sunny);
+  color: var(--color-ink);
+  border-radius: 0;
+  padding: 8px 12px;
   font: inherit;
-  font-size: var(--fs-small);
+  font-size: var(--text-label);
+  font-weight: var(--font-weight-black);
   cursor: pointer;
+  box-shadow: 4px 4px 0 var(--color-ink);
+  transform: rotate(-2deg);
 }
 
 .stage-title {
   margin: 0;
   font-family: var(--font-ui);
-  font-size: var(--fs-title);
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: clamp(24px, 3vw, 40px);
+  font-weight: var(--font-weight-black);
+  letter-spacing: var(--tracking-heading);
+  line-height: 1;
   flex: 1;
+  transform: rotate(-1deg);
+}
+
+.resume-chip {
+  appearance: none;
+  border: 2px solid var(--color-ink);
+  background: var(--color-sunny);
+  color: var(--color-ink);
+  border-radius: 0;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--font-weight-bold);
+  cursor: pointer;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 3px 3px 0 var(--color-coral);
+  transform: rotate(2deg);
+  transition:
+    transform var(--duration-spring) var(--ease-spring),
+    box-shadow var(--duration-spring) var(--ease-spring);
+}
+
+.resume-chip.mint {
+  background: var(--color-seafoam);
+  box-shadow: 3px 3px 0 var(--color-mint);
+  transform: rotate(-2deg);
+}
+
+.resume-chip:hover {
+  transform: translateY(-3px) rotate(3deg);
+  box-shadow: 5px 5px 0 var(--color-ink);
 }
 
 .stage-user {
+  appearance: none;
+  border: 2px solid var(--color-ink);
+  background: var(--color-white);
+  padding: 4px 10px 4px 4px;
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  color: var(--muted);
-  text-decoration: none;
-  font-size: var(--fs-small);
+  gap: 8px;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--font-weight-bold);
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--color-mint);
+  transform: rotate(1deg);
+  transition:
+    transform var(--duration-spring) var(--ease-spring),
+    box-shadow var(--duration-spring) var(--ease-spring);
 }
 
 .stage-user:hover {
-  color: var(--color-primary);
+  transform: translateY(-3px) rotate(-1deg);
+  box-shadow: 5px 5px 0 var(--color-coral);
+}
+
+.thread-scroll {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink) transparent;
+}
+
+.thread-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.thread-scroll::-webkit-scrollbar-track,
+.thread-scroll::-webkit-scrollbar-track-piece {
+  background: transparent;
+}
+
+.thread-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-ink);
+  border-radius: 0;
 }
 
 .thread {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
-  padding: 1.1rem 1.25rem 0.75rem;
-  max-width: 880px;
+  gap: var(--element-gap);
+  padding: var(--spacing-24);
+  max-width: min(880px, var(--page-max-width));
   width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
 }
 
 .thread-empty {
-  margin: 3rem auto;
-  color: var(--muted);
-  font-size: var(--fs-small);
+  margin: var(--spacing-64) auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-16);
+}
+
+.sticker-cluster {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  transform: rotate(-3deg);
+  margin-bottom: 8px;
+}
+
+.sticker {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-ink);
+}
+
+.sticker.round {
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+}
+
+.sticker.coral {
+  background: var(--color-coral);
+}
+
+.sticker.mint {
+  background: var(--color-mint);
+}
+
+.sticker.sunny {
+  background: var(--color-sunny);
+}
+
+.sticker.seafoam {
+  background: var(--color-seafoam);
+}
+
+.empty-title {
+  margin: 0;
+  font-size: clamp(28px, 5vw, 56px);
+  font-weight: var(--font-weight-black);
+  line-height: 1;
+  letter-spacing: var(--tracking-display);
+  transform: rotate(-2deg);
+}
+
+.empty-sub {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: var(--font-weight-bold);
+  border: 2px solid var(--color-ink);
+  padding: 8px 12px;
+  background: var(--color-seafoam);
+  box-shadow: 4px 4px 0 var(--color-ink);
+  transform: rotate(1deg);
 }
 
 .thread-end {
@@ -549,25 +1073,27 @@ watch(
 
 .speech {
   max-width: min(640px, 100%);
-  padding: 0.7rem 0.95rem;
-  border-radius: var(--radius-md);
-  font-size: var(--fs-body);
-  line-height: 1.55;
+  padding: 16px 20px;
+  border-radius: 0;
+  font-size: var(--text-body);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--leading-body);
+  border: 4px solid var(--color-ink);
 }
 
 .speech.user {
-  background: var(--color-primary);
-  color: #fff;
+  background: var(--color-coral);
+  color: var(--color-white);
   white-space: pre-wrap;
-  border-bottom-right-radius: 4px;
+  box-shadow: 6px 6px 0 var(--color-ink);
+  transform: rotate(1deg);
 }
 
 .speech.assistant {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--color-info);
-  color: var(--text);
-  border-bottom-left-radius: 4px;
+  background: var(--color-white);
+  color: var(--color-ink);
+  box-shadow: 8px 8px 0 var(--color-mint);
+  transform: rotate(-1deg);
 }
 
 .speech.md-body {
@@ -577,9 +1103,9 @@ watch(
 .speech.md-body :deep(h2),
 .speech.md-body :deep(h3) {
   margin: 0.75em 0 0.35em;
-  font-size: 1.05rem;
-  font-weight: 650;
-  line-height: 1.35;
+  font-size: 20px;
+  font-weight: var(--font-weight-black);
+  line-height: 1.15;
   font-family: var(--font-ui);
 }
 
@@ -604,18 +1130,18 @@ watch(
 
 .speech.md-body :deep(blockquote) {
   margin: 0.5em 0;
-  padding: 0.35em 0.75em;
-  border-left: 3px solid var(--color-info);
-  color: var(--muted);
-  background: var(--info-soft);
+  padding: 0.5em 0.75em;
+  border-left: 4px solid var(--color-ink);
+  color: var(--color-ink);
+  background: var(--color-sunny);
 }
 
 .speech.md-body :deep(strong) {
-  font-weight: 650;
+  font-weight: var(--font-weight-black);
 }
 
 .speech.md-body :deep(a) {
-  color: var(--color-primary);
+  color: var(--color-mint);
   text-decoration: underline;
 }
 
@@ -623,45 +1149,55 @@ watch(
   font-family: ui-monospace, Consolas, monospace;
   font-size: 0.9em;
   padding: 0.1em 0.3em;
-  background: var(--rail);
-  border-radius: 3px;
+  background: var(--color-sunny);
+  border: 2px solid var(--color-ink);
+  border-radius: 0;
 }
 
 .speech.md-body :deep(pre) {
   margin: 0.5em 0;
-  padding: 0.6em 0.75em;
+  padding: 0.75em;
   overflow: auto;
-  background: var(--rail);
-  border-radius: var(--radius-sm);
+  background: var(--color-seafoam);
+  border: 2px solid var(--color-ink);
+  border-radius: 0;
 }
 
 .speech.md-body :deep(pre code) {
   padding: 0;
   background: transparent;
+  border: 0;
 }
 
 .cites {
-  margin-top: 0.45rem;
+  margin-top: 12px;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 10px;
   width: min(640px, 100%);
 }
 
 .stream-live {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.35rem;
-  font-size: var(--fs-small);
-  color: var(--muted);
+  gap: 8px;
+  margin-top: 8px;
+  font-size: var(--text-label);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-ink);
+  border: 2px solid var(--color-ink);
+  background: var(--color-sunny);
+  padding: 6px 10px;
+  box-shadow: 3px 3px 0 var(--color-ink);
+  transform: rotate(-1deg);
 }
 
 .stream-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--color-success);
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  background: var(--color-mint);
+  border: 2px solid var(--color-ink);
   animation: pulse 1s ease-in-out infinite;
 }
 
@@ -677,66 +1213,193 @@ watch(
 
 .composer-dock {
   flex-shrink: 0;
-  border-top: 1px solid var(--border);
-  background: var(--composer-bg);
-  padding: 0.75rem 1.25rem 0.85rem;
-  max-width: 880px;
+  background: transparent;
+  padding: 0 var(--spacing-24) var(--spacing-16);
+  max-width: min(880px, var(--page-max-width));
   width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
-  box-shadow: 0 -6px 18px color-mix(in srgb, var(--text) 4%, transparent);
 }
 
 .composer-shell {
   display: flex;
-  align-items: flex-end;
-  gap: 0.55rem;
-  padding: 0.55rem 0.55rem 0.55rem 0.85rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent);
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--color-white);
+  border: 4px solid var(--color-ink);
+  border-radius: 0;
+  box-shadow: 8px 8px 0 var(--color-mint);
+  transform: rotate(-1deg);
+  transition:
+    transform var(--duration-spring) var(--ease-spring),
+    box-shadow var(--duration-spring) var(--ease-spring);
+}
+
+.composer-shell:focus-within {
+  transform: translateY(-4px) rotate(0deg);
+  box-shadow: 10px 10px 0 var(--color-coral);
 }
 
 .composer-input {
-  flex: 1;
+  width: 100%;
   min-width: 0;
 }
 
 .composer-input :deep(.el-textarea__inner) {
-  border: 0;
-  box-shadow: none;
-  background: transparent;
-  padding: 0.35rem 0.15rem;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 4px 0 !important;
   resize: none;
-  font-size: var(--fs-body);
-  line-height: 1.5;
-  color: var(--text);
+  font-size: var(--text-body);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.45;
+  color: var(--color-ink);
 }
 
 .composer-input :deep(.el-textarea__inner:focus) {
-  box-shadow: none;
+  box-shadow: none !important;
+}
+
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.composer-toolbar-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resume-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  pointer-events: none;
+}
+
+.attach-btn {
+  appearance: none;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 2px solid var(--color-ink);
+  border-radius: 0;
+  background: var(--color-white);
+  color: var(--color-ink);
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--color-mint);
+  transform: rotate(-2deg);
+  transition:
+    transform var(--duration-spring) var(--ease-spring),
+    box-shadow var(--duration-spring) var(--ease-spring),
+    background-color var(--duration-spring) var(--ease-spring);
+}
+
+.attach-btn:hover:not(:disabled) {
+  background: var(--color-sunny);
+  transform: translateY(-3px) rotate(2deg);
+  box-shadow: 5px 5px 0 var(--color-coral);
+}
+
+.attach-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+  transform: none;
+}
+
+.resume-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: min(220px, 48vw);
+  padding: 4px 6px 4px 8px;
+  border: 2px solid var(--color-ink);
+  background: var(--color-seafoam);
+  box-shadow: 3px 3px 0 var(--color-mint);
+  font-size: 12px;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-ink);
+}
+
+.resume-attach-icon {
+  flex-shrink: 0;
+}
+
+.resume-attach-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resume-attach-remove {
+  appearance: none;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 2px solid var(--color-ink);
+  background: var(--color-white);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.resume-attach-remove:hover:not(:disabled) {
+  background: var(--color-peach);
+  color: var(--color-white);
+}
+
+.resume-attach-remove:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.resume-attach-hint {
+  font-size: 12px;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-ink);
 }
 
 .composer-send {
   flex-shrink: 0;
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  min-height: 42px;
-  padding: 0;
+  min-width: auto !important;
+  height: auto !important;
+  padding: 10px 18px !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .disclaimer {
-  margin: 0.45rem 0.15rem 0;
-  font-size: 0.68rem;
-  color: color-mix(in srgb, var(--muted) 78%, transparent);
+  margin: var(--spacing-16) 0 0;
+  font-size: 12px;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-ink);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
+  border-top: 2px solid var(--color-ink);
+  padding-top: 8px;
 }
 
 .rail-backdrop {
@@ -757,25 +1420,43 @@ watch(
     inset: 0 auto 0 0;
     width: min(var(--space-rail), 86vw);
     transform: translateX(-105%);
-    transition: transform 0.2s ease;
+    transition: transform var(--duration-spring) var(--ease-spring);
     box-shadow: none;
   }
 
   .workbench.rail-open .rail {
     transform: none;
-    box-shadow: 8px 0 24px color-mix(in srgb, var(--text) 12%, transparent);
+    box-shadow: 8px 0 0 var(--color-ink);
   }
 
   .rail-backdrop {
     display: block;
     position: fixed;
     inset: 0;
-    background: color-mix(in srgb, var(--text) 35%, transparent);
+    background: color-mix(in srgb, var(--color-ink) 45%, transparent);
     z-index: 15;
   }
 
   .stage-title {
-    font-size: 1.05rem;
+    font-size: 24px;
+  }
+
+  .composer-shell,
+  .composer-shell:focus-within,
+  .speech.user,
+  .speech.assistant {
+    transform: none;
+  }
+
+  .stage-bar-actions {
+    max-width: min(200px, 52vw);
+  }
+
+  .stage-user {
+    max-width: 7.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -785,6 +1466,16 @@ watch(
   }
   .stream-dot {
     animation: none;
+  }
+  .session,
+  .resume-chip,
+  .stage-user,
+  .composer-shell,
+  .speech.user,
+  .speech.assistant,
+  .attach-btn,
+  .attach-btn:hover:not(:disabled) {
+    transform: none !important;
   }
 }
 </style>

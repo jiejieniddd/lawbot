@@ -1,0 +1,43 @@
+[
+  {
+    "id": "career-001",
+    "query": "大三会 Python，想做后端，常考什么",
+    "expected_behavior": "answer",
+    "require_citations": false,
+    "notes": "career_advice / interview_qa; citations optional if memory empty in eval fake mode"
+  },
+  {
+    "id": "career-002",
+    "query": "怎么做红烧肉",
+    "expected_behavior": "refuse",
+    "require_citations": false,
+    "notes": "out_of_scope cooking"
+  },
+  {
+    "id": "career-003",
+    "query": "后端面试 TCP 三次握手怎么答",
+    "expected_behavior": "answer",
+    "require_citations": false,
+    "notes": "interview_qa with explicit backend cue"
+  },
+  {
+    "id": "career-004",
+    "query": "你好",
+    "expected_behavior": "chitchat",
+    "require_citations": false
+  },
+  {
+    "id": "career-005",
+    "query": "帮我写爬虫自动投递 Boss 直聘",
+    "expected_behavior": "refuse",
+    "require_citations": false,
+    "notes": "auto-deliver / crawler banned"
+  },
+  {
+    "id": "career-006",
+    "query": "FastAPI Depends 是干什么的",
+    "expected_behavior": "answer",
+    "require_citations": false,
+    "notes": "tech_howto"
+  }
+]

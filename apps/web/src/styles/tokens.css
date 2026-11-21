@@ -1,46 +1,113 @@
 :root {
-  /* Brand categorical palette (brief) */
-  --categorical_data-color-1: #5470c6;
-  --categorical_data-color-2: #91cc75;
-  --categorical_data-color-3: #fac858;
-  --categorical_data-color-4: #ee6666;
-  --categorical_data-color-5: #73c0de;
+  /* Playful Neo-Brutalism — Colors */
+  --color-ink: #000000;
+  --color-white: #ffffff;
+  --color-coral: #ff6b6b;
+  --color-mint: #4ecdc4;
+  --color-sunny: #ffe66d;
+  --color-seafoam: #95e1d3;
+  --color-peach: #f38181;
 
-  --color-primary: var(--categorical_data-color-1);
-  --color-success: var(--categorical_data-color-2);
-  --color-accent: var(--categorical_data-color-3);
-  --color-danger: var(--categorical_data-color-4);
-  --color-info: var(--categorical_data-color-5);
+  /* App aliases (keep existing var names working) */
+  --color-primary: var(--color-coral);
+  --color-success: var(--color-mint);
+  --color-accent: var(--color-sunny);
+  --color-danger: var(--color-peach);
+  --color-info: var(--color-seafoam);
 
-  --bg: #f3f5fa;
-  --surface: #ffffff;
-  --text: #1a2332;
-  --muted: #5b6578;
-  --border: #d8dee9;
-  --rail: #eef1f8;
-  --composer-bg: #ffffff;
-  --primary-soft: color-mix(in srgb, var(--color-primary) 12%, white);
-  --info-soft: color-mix(in srgb, var(--color-info) 14%, white);
-  --danger-soft: color-mix(in srgb, var(--color-danger) 12%, white);
+  --bg: var(--color-white);
+  --surface: var(--color-white);
+  --text: var(--color-ink);
+  --muted: var(--color-ink);
+  --border: var(--color-ink);
+  --rail: var(--color-white);
+  --composer-bg: var(--color-white);
+  --primary-soft: var(--color-sunny);
+  --info-soft: var(--color-seafoam);
+  --danger-soft: var(--color-peach);
 
-  --font-ui: "Sora", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-body: "Noto Sans SC", "Sora", "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* Typography */
+  --font-sans: "Inter", "Arial Black", Helvetica, "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-ui: var(--font-sans);
+  --font-body: var(--font-sans);
 
-  --fs-brand: 1.9rem;
-  --fs-title: 1.25rem;
-  --fs-body: 0.9375rem;
-  --fs-small: 0.8125rem;
-  --fs-fine: 0.75rem;
+  --text-display: 56px;
+  --leading-display: 1;
+  --tracking-display: -0.03em;
+  --text-heading: 40px;
+  --leading-heading: 1.05;
+  --tracking-heading: -0.02em;
+  --text-subheading: 28px;
+  --leading-subheading: 1.15;
+  --text-body-lg: 20px;
+  --leading-body-lg: 1.4;
+  --text-body: 16px;
+  --leading-body: 1.55;
+  --text-label: 14px;
+  --leading-label: 1.35;
+  --tracking-label: 0.04em;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --space-rail: 260px;
-  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-primary) 35%, transparent);
+  --font-weight-bold: 700;
+  --font-weight-black: 900;
+
+  --fs-brand: var(--text-heading);
+  --fs-title: var(--text-subheading);
+  --fs-body: var(--text-body);
+  --fs-small: var(--text-label);
+  --fs-fine: 12px;
+
+  /* Spacing */
+  --spacing-unit: 8px;
+  --spacing-8: 8px;
+  --spacing-16: 16px;
+  --spacing-24: 24px;
+  --spacing-32: 32px;
+  --spacing-48: 48px;
+  --spacing-64: 64px;
+  --spacing-96: 96px;
+
+  --page-max-width: 1200px;
+  --section-gap: 80px;
+  --card-padding: 28px;
+  --element-gap: 20px;
+  --space-rail: 280px;
+
+  /* Radius — zero everywhere */
+  --radius-cards: 0;
+  --radius-buttons: 0;
+  --radius-inputs: 0;
+  --radius-tags: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+
+  /* Motion */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-spring: 300ms;
+
+  /* Hard shadows */
+  --shadow-coral: 6px 6px 0 var(--color-coral);
+  --shadow-mint: 8px 8px 0 var(--color-mint);
+  --shadow-sunny: 8px 8px 0 var(--color-sunny);
+  --shadow-ink: 4px 4px 0 var(--color-ink);
+  --focus-ring: 4px 4px 0 var(--color-mint);
 
   /* Element Plus alignment */
-  --el-color-primary: var(--color-primary);
-  --el-color-success: var(--color-success);
-  --el-color-warning: var(--color-accent);
-  --el-color-danger: var(--color-danger);
-  --el-color-info: var(--color-info);
+  --el-color-primary: var(--color-coral);
+  --el-color-success: var(--color-mint);
+  --el-color-warning: var(--color-sunny);
+  --el-color-danger: var(--color-peach);
+  --el-color-info: var(--color-seafoam);
+  --el-border-radius-base: 0;
+  --el-border-radius-small: 0;
+  --el-border-radius-round: 0;
+  --el-border-color: var(--color-ink);
+  --el-border-color-hover: var(--color-ink);
+  --el-text-color-primary: var(--color-ink);
+  --el-text-color-regular: var(--color-ink);
+  --el-bg-color: var(--color-white);
+  --el-fill-color-blank: var(--color-white);
+  --el-font-family: var(--font-sans);
+  --el-box-shadow: var(--shadow-mint);
+  --el-box-shadow-light: var(--shadow-coral);
+  --el-box-shadow-lighter: var(--shadow-ink);
 }
