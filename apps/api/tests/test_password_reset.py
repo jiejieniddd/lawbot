@@ -36,7 +36,7 @@ def _mail_body(**overrides):
         "smtp_username": "mailer",
         "smtp_password": "s3cret-mail",
         "from_address": "noreply@example.com",
-        "from_name": "LawBot",
+        "from_name": "CareerBot",
         "code_ttl_minutes": 10,
         "resend_interval_seconds": 60,
     }

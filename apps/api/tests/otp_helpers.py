@@ -69,7 +69,7 @@ def seed_mail_enabled(db_session, **overrides) -> MailSettings:
             jwt_secret=settings.secret_key,
         ),
         "from_address": "noreply@example.com",
-        "from_name": "LawBot",
+        "from_name": "CareerBot",
         "code_ttl_minutes": 10,
         "resend_interval_seconds": 60,
     }

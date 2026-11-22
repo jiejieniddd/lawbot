@@ -311,7 +311,7 @@ def test_embedding_connectivity(
 
     try:
         vectors = embed_texts(
-            ["LawBot embedding connectivity test"],
+            ["CareerBot embedding connectivity test"],
             model=resolved.embedding_model,
             api_key=resolved.api_key,
             api_base=resolved.api_base,

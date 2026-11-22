@@ -26,6 +26,14 @@
       "sourceType": "github",
       "skillPath": "plugins/llm-application-dev/skills/prompt-engineering-patterns/SKILL.md",
       "computedHash": "19df76da97709cf86875b769626a5c178ce20f9cc9e5e3bf96821518a736b38c"
+    },
+    "ssh": {
+      "source": "OpenHands/extensions",
+      "commit": "460767b72531deb0ece117959c5a7d9fc86da268",
+      "sourceType": "github",
+      "skillPath": "skills/ssh/SKILL.md",
+      "computedHash": "3fdc6ffce3542307ab426819e028c50a3e724535ace231213021172018baf7fd",
+      "installMode": "copy"
     }
   }
 }

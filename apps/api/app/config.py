@@ -6,7 +6,7 @@ from pathlib import Path
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# apps/api/app/config.py -> repo root (LawBot/)
+# apps/api/app/config.py -> repo root (CareerBot / LawBot workspace)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _ENV_FILES = (
     str(_REPO_ROOT / ".env"),
@@ -142,7 +142,7 @@ class Settings(BaseSettings):
         default="", validation_alias=AliasChoices("SMTP_FROM_ADDRESS", "smtp_from_address")
     )
     smtp_from_name: str = Field(
-        default="LawBot", validation_alias=AliasChoices("SMTP_FROM_NAME", "smtp_from_name")
+        default="CareerBot", validation_alias=AliasChoices("SMTP_FROM_NAME", "smtp_from_name")
     )
     password_reset_ttl_minutes: int = Field(
         default=10, validation_alias=AliasChoices("PASSWORD_RESET_TTL_MINUTES", "password_reset_ttl_minutes")

@@ -1,1 +1,1 @@
-"""LawBot background worker."""
+"""CareerBot background worker."""

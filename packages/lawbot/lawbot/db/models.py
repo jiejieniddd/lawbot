@@ -257,7 +257,7 @@ class MailSettings(Base):
     smtp_username: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     smtp_password_encrypted: Mapped[str] = mapped_column(Text, nullable=False, default="")
     from_address: Mapped[str] = mapped_column(String(255), nullable=False, default="")
-    from_name: Mapped[str] = mapped_column(String(120), nullable=False, default="LawBot")
+    from_name: Mapped[str] = mapped_column(String(120), nullable=False, default="CareerBot")
     code_ttl_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     resend_interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
     updated_at: Mapped[datetime] = mapped_column(

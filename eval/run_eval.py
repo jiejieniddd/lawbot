@@ -252,7 +252,7 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    print(f"=== CareerBot/LawBot eval ({gold_path.name}) ===")
+    print(f"=== CareerBot eval ({gold_path.name}) ===")
     print(f"cases: {summary['passed']}/{summary['total']} passed")
     print(f"citation_verifiable_rate: {summary['citation_verifiable_rate']:.2%}")
     print(f"unsupported_assertion_rate: {summary['unsupported_assertion_rate']:.2%}")

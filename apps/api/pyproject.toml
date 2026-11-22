@@ -1,7 +1,7 @@
 [project]
 name = "lawbot-api"
 version = "0.1.0"
-description = "LawBot FastAPI application"
+description = "CareerBot FastAPI application"
 requires-python = ">=3.12"
 dependencies = [
   "lawbot",

@@ -1,4 +1,4 @@
-# LawBot worker
+# CareerBot worker
 
 Polls `knowledge_import_jobs` (`pending` → `running` → `succeeded|failed`), loads HF articles, and upserts into Qdrant + OpenSearch.
 

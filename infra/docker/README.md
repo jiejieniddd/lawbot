@@ -1,6 +1,6 @@
 # infra/docker
 
-Shared Docker/nginx assets for the LawBot stack.
+Shared Docker/nginx assets for the CareerBot stack.
 
 | File | Used by |
 |------|---------|

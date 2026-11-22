@@ -1,1 +1,1 @@
-"""LawBot API application package."""
+"""CareerBot API application package."""

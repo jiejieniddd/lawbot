@@ -1,6 +1,7 @@
-# CareerBot（仓库包名仍为 LawBot / `lawbot`）
+# CareerBot
 
-C 端 **求职 / 面试 / 技术问答** AI Agent + 后台管理。栈复用原 LawBot；**不做**招聘站爬虫与自动投递。
+C 端 **求职 / 面试 / 技术问答** AI Agent + 后台管理。  
+工程包名仍为 `lawbot`（`packages/lawbot`、Compose DB 用户等），产品对外统一称 **CareerBot**；**不做**招聘站爬虫与自动投递。
 
 | 目录 | 说明 |
 |------|------|
@@ -69,7 +70,7 @@ C 端登录支持两种**互斥**方式（`POST /api/v1/auth/login` 必填 `mode
 
 ## 不对 C 端 / 第三方提供平台 API Key
 
-LawBot **不提供**平台级对外 `api_keys`、`lb_` Bearer、或「开发者凭证」产品面。
+CareerBot **不提供**平台级对外 `api_keys`、`lb_` Bearer、或「开发者凭证」产品面。
 
 - **C 端**：仅用户注册/登录 JWT（`/api/v1`）
 - **模型供应商 Key**：仅 Admin「模型供应商」内部配置，Fernet 加密入库，列表只显示脱敏值

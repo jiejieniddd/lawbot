@@ -93,7 +93,7 @@ def send_test_mail(
     if config.password_unreadable:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="邮件发送失败：SMTP 密码无法解密")
     try:
-        send_email(config, to, "LawBot 测试邮件", "这是一封系统设置发出的测试邮件。\n")
+        send_email(config, to, "CareerBot 测试邮件", "这是一封系统设置发出的测试邮件。\n")
     except MailDeliveryError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     return {"detail": "测试邮件已发送"}

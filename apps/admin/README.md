@@ -1,4 +1,4 @@
-# LawBot Admin
+# CareerBot Admin
 
 React + TypeScript + Vite + React Router + Ant Design + TanStack Query。
 

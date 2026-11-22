@@ -4,7 +4,12 @@ WORKDIR /workspace
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
-    UV_COMPILE_BYTECODE=1
+    UV_COMPILE_BYTECODE=1 \
+    UV_HTTP_TIMEOUT=120
+
+# China ECS: override at build time if needed, e.g. --build-arg UV_INDEX_URL=https://pypi.org/simple
+ARG UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
+ENV UV_DEFAULT_INDEX=${UV_INDEX_URL}
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /usr/local/bin/uv
 

@@ -19,7 +19,7 @@ class MailSettingsUpdate(BaseModel):
     smtp_username: str = Field(default="", max_length=255)
     smtp_password: str = Field(default="", max_length=255)
     from_address: str = Field(default="", max_length=255)
-    from_name: str = Field(default="LawBot", max_length=120)
+    from_name: str = Field(default="CareerBot", max_length=120)
     code_ttl_minutes: int = Field(default=10, ge=1, le=60)
     resend_interval_seconds: int = Field(default=60, ge=30, le=3600)
 
@@ -101,7 +101,7 @@ def _from_env(settings: Settings) -> MailConfig:
         smtp_username=settings.smtp_username or "",
         smtp_password=password,
         from_address=(settings.smtp_from_address or "").strip(),
-        from_name=settings.smtp_from_name or "LawBot",
+        from_name=settings.smtp_from_name or "CareerBot",
         code_ttl_minutes=max(1, int(settings.password_reset_ttl_minutes or 10)),
         resend_interval_seconds=max(1, int(settings.password_reset_resend_seconds or 60)),
         password_configured=bool(password),
@@ -125,7 +125,7 @@ def _from_row(row: MailSettings, settings: Settings) -> MailConfig:
         smtp_username=row.smtp_username or "",
         smtp_password=password,
         from_address=(row.from_address or "").strip(),
-        from_name=row.from_name or "LawBot",
+        from_name=row.from_name or "CareerBot",
         code_ttl_minutes=max(1, int(row.code_ttl_minutes or 10)),
         resend_interval_seconds=max(1, int(row.resend_interval_seconds or 60)),
         password_configured=bool(ciphertext),
@@ -160,7 +160,7 @@ def save_mail_config(db: Session, settings: Settings, body: MailSettingsUpdate) 
     row.smtp_username = body.smtp_username.strip()
     row.smtp_password_encrypted = stored_password
     row.from_address = body.from_address.strip()
-    row.from_name = body.from_name.strip() or "LawBot"
+    row.from_name = body.from_name.strip() or "CareerBot"
     row.code_ttl_minutes = body.code_ttl_minutes
     row.resend_interval_seconds = body.resend_interval_seconds
     db.add(row)

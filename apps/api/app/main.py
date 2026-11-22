@@ -69,7 +69,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="LawBot API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="CareerBot API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,

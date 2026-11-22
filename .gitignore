@@ -21,10 +21,14 @@ apps/admin/dist/
 # Local uploads & RAG indexes (rebuild via import scripts)
 data/uploads/
 data/rag_memory/
-data/rag_memory_self_test/
+data/rag_memory_*/
 data/rag_memory.bak_*/
 data/hf/
+data/_trash_*/
 data/_trash_law_*/
+
+# Keep product market maps tracked (role_skill_map etc.)
+!data/market/
 
 # Agent debug traces (any location)
 data/agent_traces/
@@ -34,6 +38,12 @@ apps/api/data/agent_traces/
 # Local ops / phase reports (not product assets)
 data/_*.md
 data/_*.json
+data/_*.jsonl
+
+# Vite / tooling caches
+apps/web/.vite/
+apps/admin/.vite/
+*.tsbuildinfo
 
 # Personal interview prep (local only)
 docs/interview-agent-qa.md

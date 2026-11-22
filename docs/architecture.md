@@ -1,4 +1,4 @@
-# LawBot Architecture
+# CareerBot Architecture
 
 ## System responsibilities
 

@@ -1,7 +1,7 @@
 [project]
 name = "lawbot-worker"
 version = "0.1.0"
-description = "LawBot knowledge import worker"
+description = "CareerBot knowledge import worker"
 requires-python = ">=3.12"
 dependencies = [
   "lawbot",

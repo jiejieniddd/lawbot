@@ -67,7 +67,7 @@ def test_chitchat_skips_retrieve_and_legal_template():
         joined = "".join(e.data["text"] for e in tokens)
         assert "## 简单说" not in joined
         assert "## 法律上大概怎么看" not in joined
-        assert "LawBot" in joined
+        assert "CareerBot" in joined
         assert finals[-1].get("intent") == "chitchat"
         assert finals[-1].get("citations") == []
 
@@ -168,7 +168,7 @@ def test_chitchat_shortcircuit_skips_llm_and_retrieve(monkeypatch):
         finals = [e for e in events if not isinstance(e, ChatEvent)]
         assert tokens
         joined = "".join(e.data["text"] for e in tokens)
-        assert "LawBot" in joined
+        assert "CareerBot" in joined
         assert finals[-1].get("intent") == "chitchat"
         assert finals[-1].get("used_mock") is True
 

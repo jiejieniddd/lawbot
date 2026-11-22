@@ -1,4 +1,4 @@
-# LawBot Web（C 端）
+# CareerBot Web（C 端）
 
 Vue 3 + TypeScript + Vite + Vue Router + Pinia + Element Plus。
 

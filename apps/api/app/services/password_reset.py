@@ -87,7 +87,7 @@ def send_reset_code(db: Session, settings: Settings, email: str) -> dict:
 
     code = f"{secrets.randbelow(1_000_000):06d}"
     minutes = config.code_ttl_minutes
-    subject = "LawBot 密码重置验证码"
+    subject = "CareerBot 密码重置验证码"
     text = f"你的验证码是 {code}，{minutes} 分钟内有效。\n如果不是你本人操作，请忽略这封邮件。\n"
     try:
         send_email(config, email, subject, text)
