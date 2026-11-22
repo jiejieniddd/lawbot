@@ -2,23 +2,19 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type UploadRawFile } from 'element-plus'
-import { Briefcase, Document, Lock, User } from '@element-plus/icons-vue'
+import { Document, Lock, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '../../stores/auth'
-import { useJdStore } from '../../stores/jd'
 import { useResumeStore } from '../../stores/resume'
 
 const emit = defineEmits<{ close: [] }>()
 
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024
-const JD_MAX_BYTES = 8 * 1024 * 1024
 
 const auth = useAuthStore()
 const resumeStore = useResumeStore()
-const jdStore = useJdStore()
 const router = useRouter()
-const jdPaste = ref('')
 
-const activeSection = ref<'profile' | 'security' | 'resume' | 'jd'>('profile')
+const activeSection = ref<'profile' | 'security' | 'resume'>('profile')
 
 const displayName = ref('')
 const savingProfile = ref(false)
@@ -76,66 +72,10 @@ onMounted(async () => {
     await auth.fetchMe()
     displayName.value = auth.user?.display_name || ''
     await resumeStore.fetchActive()
-    await jdStore.fetchActive()
   } catch (e) {
     ElMessage.error((e as Error).message || '加载资料失败')
   }
 })
-
-function beforeJdUpload(file: UploadRawFile) {
-  const name = (file.name || '').toLowerCase()
-  const okExt =
-    name.endsWith('.pdf') ||
-    name.endsWith('.docx') ||
-    name.endsWith('.png') ||
-    name.endsWith('.txt')
-  if (!okExt) {
-    ElMessage.error('仅支持 PDF / DOCX / PNG / TXT')
-    return false
-  }
-  if (file.size > JD_MAX_BYTES) {
-    ElMessage.error('JD 不能超过 8MB')
-    return false
-  }
-  void doJdUpload(file)
-  return false
-}
-
-async function doJdUpload(file: File) {
-  try {
-    const row = await jdStore.upload(file)
-    if (row.parse_status === 'ready') ElMessage.success('JD 已上传并解析')
-    else ElMessage.warning(`上传完成，状态：${row.parse_status}`)
-  } catch (e) {
-    ElMessage.error((e as Error).message || 'JD 上传失败')
-  }
-}
-
-async function onPasteJd() {
-  const text = jdPaste.value.trim()
-  if (text.length < 20) {
-    ElMessage.warning('请粘贴至少 20 字的 JD 文本')
-    return
-  }
-  try {
-    await jdStore.paste(text)
-    ElMessage.success('JD 文本已保存')
-    jdPaste.value = ''
-  } catch (e) {
-    ElMessage.error((e as Error).message || '保存失败')
-  }
-}
-
-async function onRemoveJd() {
-  const id = jdStore.active?.id
-  if (!id) return
-  try {
-    await jdStore.remove(id)
-    ElMessage.success('已删除当前 JD')
-  } catch (e) {
-    ElMessage.error((e as Error).message || '删除失败')
-  }
-}
 
 async function saveProfile() {
   const name = displayName.value.trim()
@@ -276,15 +216,6 @@ async function logout() {
         <el-icon class="nav-icon" :size="16"><Document /></el-icon>
         我的简历
       </button>
-      <button
-        type="button"
-        class="nav-item"
-        :class="{ active: activeSection === 'jd' }"
-        @click="activeSection = 'jd'"
-      >
-        <el-icon class="nav-icon" :size="16"><Briefcase /></el-icon>
-        岗位 JD
-      </button>
     </nav>
 
     <div class="shell-pane">
@@ -354,8 +285,17 @@ async function logout() {
         <div class="setting-row">
           <div class="row-label">当前简历</div>
           <div class="row-value">
-            <div v-if="resumeStore.active" class="resume-card">
-              <div class="resume-badge">{{ resumeStore.badgeLabel }}</div>
+            <button
+              v-if="resumeStore.active"
+              type="button"
+              class="resume-card resume-card-btn"
+              title="查看简历"
+              @click="resumeStore.openPreview(resumeStore.active)"
+            >
+              <div class="resume-card-top">
+                <div class="resume-badge">{{ resumeStore.badgeLabel }}</div>
+                <span class="resume-view-hint">查看</span>
+              </div>
               <div class="muted">{{ resumeStore.active.filename }}</div>
               <div v-if="resumeStore.active.skills?.length" class="resume-skills">
                 {{ resumeStore.active.skills.slice(0, 12).join(' · ') }}
@@ -363,63 +303,8 @@ async function logout() {
               <div v-if="resumeStore.active.error" class="resume-error">
                 {{ resumeStore.active.error }}
               </div>
-            </div>
+            </button>
             <div v-else class="muted">尚未上传简历</div>
-            <p class="resume-hint">请在聊天发送区点击回形针上传或移除简历（PDF / DOCX / PNG）</p>
-          </div>
-        </div>
-      </section>
-
-      <section v-show="activeSection === 'jd'" class="pane-section">
-        <div class="setting-row">
-          <div class="row-label">当前 JD</div>
-          <div class="row-value">
-            <div v-if="jdStore.active" class="resume-card">
-              <div class="resume-badge">{{ jdStore.badgeLabel }}</div>
-              <div class="muted">{{ jdStore.active.filename }}</div>
-              <div v-if="jdStore.active.skills?.length" class="resume-skills">
-                {{ jdStore.active.skills.slice(0, 12).join(' · ') }}
-              </div>
-            </div>
-            <div v-else class="muted">尚未上传/粘贴 JD</div>
-            <div class="avatar-actions" style="margin-top: 10px">
-              <el-upload
-                :show-file-list="false"
-                accept=".pdf,.docx,.png,.txt"
-                :disabled="jdStore.uploading"
-                :before-upload="beforeJdUpload"
-              >
-                <el-button size="small" type="primary" :loading="jdStore.uploading">
-                  上传 JD
-                </el-button>
-              </el-upload>
-              <el-button
-                v-if="jdStore.active"
-                size="small"
-                text
-                type="danger"
-                :disabled="jdStore.uploading"
-                @click="onRemoveJd"
-              >
-                删除
-              </el-button>
-            </div>
-            <div style="margin-top: 12px">
-              <el-input
-                v-model="jdPaste"
-                type="textarea"
-                :rows="4"
-                placeholder="或粘贴 JD 文本（岗位职责 / 任职要求）"
-              />
-              <el-button
-                style="margin-top: 8px"
-                size="small"
-                :loading="jdStore.uploading"
-                @click="onPasteJd"
-              >
-                保存粘贴 JD
-              </el-button>
-            </div>
           </div>
         </div>
       </section>
@@ -665,6 +550,46 @@ async function logout() {
   gap: 8px;
 }
 
+.resume-card-btn {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  padding: 12px;
+  border: 3px solid var(--color-ink);
+  background: var(--color-white);
+  box-shadow: 4px 4px 0 var(--color-mint);
+  transition:
+    transform var(--duration-spring) var(--ease-spring),
+    box-shadow var(--duration-spring) var(--ease-spring),
+    background-color var(--duration-spring) var(--ease-spring);
+}
+
+.resume-card-btn:hover {
+  background: var(--color-sunny);
+  transform: translateY(-2px) rotate(-0.5deg);
+  box-shadow: 6px 6px 0 var(--color-ink);
+}
+
+.resume-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.resume-view-hint {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border: 2px solid var(--color-ink);
+  background: var(--color-mint);
+}
+
 .resume-badge {
   display: inline-flex;
   width: fit-content;
@@ -688,14 +613,6 @@ async function logout() {
   font-size: 12px;
   font-weight: var(--font-weight-bold);
   color: var(--color-peach);
-}
-
-.resume-hint {
-  margin: 10px 0 0;
-  font-size: 12px;
-  font-weight: var(--font-weight-bold);
-  color: var(--color-ink);
-  line-height: 1.4;
 }
 
 @media (max-width: 720px) {

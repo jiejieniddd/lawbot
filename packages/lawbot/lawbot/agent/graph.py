@@ -13,6 +13,7 @@ from lawbot.agent.citations import (
     format_basis_line,
     needs_unverified_fallback,
     repair_citations,
+    strip_internal_ids,
     supported_index,
 )
 from lawbot.agent.checkpoint import get_checkpointer
@@ -50,6 +51,7 @@ from lawbot.agent.prompts import (
     build_staged_user_prompt,
     build_out_of_scope_user_prompt,
     build_rewrite_user_prompt,
+    format_citation_block,
 )
 from lawbot.agent.tools import ToolContext, execute_tool
 from lawbot.domain.schemas import ChatEvent, Citation
@@ -1819,18 +1821,19 @@ def _model_report_args(
     doubtful: list[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     cites = state.get("law_hits") or state.get("citations") or []
-    cite_note = "（无）" if not cites else json.dumps(cites, ensure_ascii=False)
+    cite_note = format_citation_block(list(cites) if cites else [])
     prompt = (
         "只输出 JSON，键为 direction、key_points、advice、risk，值都是非空字符串。\n"
-        "direction/key_points 只能使用下面检索结果中的标题与片段，禁止编造出处。\n"
+        "direction/key_points 只能使用下面检索结果中的标题与片段，禁止编造出处，"
+        "禁止输出内部知识库编号。\n"
         f"问题：{state.get('query') or ''}\n"
-        f"检索结果：{cite_note}\n"
+        f"检索结果：\n{cite_note}\n"
     )
     if doubtful:
         banned = "、".join(f"《{law}》{article}" for law, article in doubtful)
         prompt += f"以下引用存疑，不要再写：{banned}。\n"
     if not cites:
-        prompt += "未检索到明确条目时，direction 须写明未命中知识库，禁止编造文档编号。\n"
+        prompt += "未检索到明确条目时，direction 须写明未命中知识库，禁止假装有资料依据。\n"
     raw = complete_text(
         prompt=prompt,
         credentials=credentials,
@@ -2238,7 +2241,11 @@ def make_answer(credentials: ProviderCredentials | None):
         legal_state = {**state, "intent": state.get("intent") or "career_advice"}
         if credentials is None:
             logger.info("LLM answer using mock stream (no enabled provider)")
-            return {**state, "answer": _mock_answer(legal_state), "used_mock": True}
+            return {
+                **state,
+                "answer": strip_internal_ids(_mock_answer(legal_state)),
+                "used_mock": True,
+            }
 
         user_query = (state.get("query") or "").strip()
         query = state.get("collected") or user_query
@@ -2281,14 +2288,16 @@ def make_answer(credentials: ProviderCredentials | None):
                 logger.exception("make_answer complete_text failed")
                 text = ""
             if text:
-                return {**state, "answer": text, "used_mock": False}
+                return {**state, "answer": strip_internal_ids(text), "used_mock": False}
             return {
                 **state,
-                "answer": _soft_fail_answer(query=user_query, has_citations=False),
+                "answer": strip_internal_ids(
+                    _soft_fail_answer(query=user_query, has_citations=False)
+                ),
                 "used_mock": True,
                 "citations": [],
             }
-        return {**state, "answer": text, "used_mock": False}
+        return {**state, "answer": strip_internal_ids(text), "used_mock": False}
 
     return answer
 
@@ -2415,6 +2424,7 @@ def build_graph(
 
 
 _STREAM_TRUNCATED_FOOTER = "（生成超时，以上内容可能不完整，可点击重试或换个问法。）"
+_STREAM_LENGTH_FOOTER = "（篇幅受限，可继续追问补全）"
 
 
 def _stream_answer_tokens(
@@ -2501,7 +2511,12 @@ def _stream_answer_tokens(
         body = "".join(full_parts).strip()
         if truncated is not None:
             if body:
-                footer = f"\n\n{_STREAM_TRUNCATED_FOOTER}"
+                note = (
+                    _STREAM_LENGTH_FOOTER
+                    if truncated.kind == "length"
+                    else _STREAM_TRUNCATED_FOOTER
+                )
+                footer = f"\n\n{note}"
                 full_parts.append(footer)
                 yield ChatEvent.token(request_id, footer)
                 logger.info(
@@ -2667,8 +2682,9 @@ def run_agent_stream(
         phase = state.get("phase") or "analyze"
 
         if phase == "report_failed":
-            fail_text = (state.get("mock_text") or "").strip() or _soft_fail_answer(
-                query=query, has_citations=False
+            fail_text = strip_internal_ids(
+                (state.get("mock_text") or "").strip()
+                or _soft_fail_answer(query=query, has_citations=False)
             )
             for piece in _iter_mock_chunks(fail_text):
                 tok = ChatEvent.token(request_id, piece)
@@ -2689,7 +2705,7 @@ def run_agent_stream(
             yield failed
             return
 
-        fixed = (state.get("fixed_text") or "").strip()
+        fixed = strip_internal_ids((state.get("fixed_text") or "").strip())
         if phase in {"followup", "staged", "no_basis", "analyze", "chitchat"} and fixed:
             for piece in _iter_mock_chunks(fixed):
                 tok = ChatEvent.token(request_id, piece)
@@ -2753,7 +2769,7 @@ def run_agent_stream(
                 list(state.get("law_hits") or []) if phase == "analyze" else [],
                 None,
             )
-            full = checked.text
+            full = strip_internal_ids(checked.text)
             if state.get("province") and LOCAL_LAW_NOTE not in full:
                 if "## 风险提示" in full or "## 注意" in full:
                     pass
@@ -2773,6 +2789,8 @@ def run_agent_stream(
             }
         elif generation_failed:
             out_state = {**state, "citations": []}
+        else:
+            full = strip_internal_ids(full)
 
         if phase == "analyze" and not generation_failed:
             for citation in out_state.get("citations") or []:

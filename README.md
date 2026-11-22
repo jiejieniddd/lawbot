@@ -85,7 +85,7 @@ LawBot **不提供**平台级对外 `api_keys`、`lb_` Bearer、或「开发者�
 
 流式超时（`.env`）：`LLM_TIMEOUT_SECONDS`（默认 60）只约束请求/连接/首包；`LLM_STREAM_IDLE_SECONDS`（默认 120）为 chunk 空闲超时；`LLM_STREAM_MAX_SECONDS`（默认 480）为整段硬顶。空闲/硬顶截断会保留已生成正文并提示可能不完整，不会因整段墙钟静默掐断。
 
-答长：`LLM_ANSWER_MAX_TOKENS`（显式优先）或 `LLM_ANSWER_PROFILE=normal|compact`（normal=800，compact=500；默认 normal/800）。仅作用于回答流式，不影响分类短 JSON。
+答长：`LLM_ANSWER_MAX_TOKENS`（显式优先）或 `LLM_ANSWER_PROFILE=normal|compact`（normal=1600，compact=800；默认 normal/1600）。仅作用于回答流式，不影响分类短 JSON。提高上限回答更完整，但延迟与成本上升；需要更快首包可改用 `compact` 或更小显式值。若仍触顶，流结束会追加「篇幅受限…」脚注（与超时脚注区分）。
 
 ### 法律问答延迟（TTFT）怎么读日志
 
@@ -115,7 +115,7 @@ LawBot **不提供**平台级对外 `api_keys`、`lb_` Bearer、或「开发者�
 
 ## CareerBot 知识导入
 
-主库目录：`RAG_MEMORY_DIR`（默认 `data/rag_memory`）。Domain **D** `self_test` 写入 `RAG_SELF_TEST_DIR`（默认 `data/rag_memory_self_test`），**永不**进入 `search_kb`。
+主库目录：`RAG_MEMORY_DIR`（默认 `data/rag_memory`）。Domain **D** `self_test` 写入 `RAG_SELF_TEST_DIR`（默认 `data/rag_memory_self_test`），**永不**进入 `search_kb`。模拟面试口述题库：`--source mock_interview_zh` → `RAG_MOCK_INTERVIEW_DIR`（默认 `data/rag_memory_mock_interview`，domain=`mock_interview`），**仅** `/api/v1/mock-interview/search` 检索，聊天主库永不混入。
 
 | `--source` | 本地路径（优先） | Domain | 推荐 max_rows | 写入 |
 |------------|------------------|--------|---------------|------|

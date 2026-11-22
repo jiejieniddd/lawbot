@@ -345,3 +345,65 @@ class UserJd(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class InterviewSession(Base):
+    """Mock oral-interview session (CareerBot)."""
+
+    __tablename__ = "interview_sessions"
+    __table_args__ = (Index("ix_interview_sessions_user_updated", "user_id", "updated_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="in_progress")
+    question_count: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    target_role: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    resume_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user_resumes.id", ondelete="SET NULL"), nullable=True
+    )
+    jd_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user_jds.id", ondelete="SET NULL"), nullable=True
+    )
+    resume_snapshot: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    jd_snapshot: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    report: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    turns: Mapped[list[InterviewTurn]] = relationship(
+        back_populates="session", cascade="all, delete-orphan", order_by="InterviewTurn.seq"
+    )
+
+
+class InterviewTurn(Base):
+    """One question-answer turn inside an interview session."""
+
+    __tablename__ = "interview_turns"
+    __table_args__ = (
+        Index("ix_interview_turns_session_id", "session_id"),
+        Index("uq_interview_turns_session_seq", "session_id", "seq", unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("interview_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    reference_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dimensions: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    session: Mapped[InterviewSession] = relationship(back_populates="turns")

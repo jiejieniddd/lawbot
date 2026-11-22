@@ -67,12 +67,42 @@ def format_basis_line(hit: dict[str, Any]) -> str:
     bits = [f"{ref}（效力：{status_label(hit.get('status'))}）"]
     if hit.get("effective_date"):
         bits.append(str(hit["effective_date"]))
-    if hit.get("source_id"):
-        bits.append(str(hit["source_id"]))
     snippet = str(hit.get("text") or "").strip()
     if snippet:
         bits.append(snippet[:80])
     return "｜".join(bits)
+
+
+# Internal KB id shapes that must never appear in student-facing answer text.
+_SOURCE_ID_EQ_RE = re.compile(r"source_id\s*=\s*\S+", re.IGNORECASE)
+_PREFIXED_ID_RE = re.compile(
+    r"\b(?:ai_job|interview_zh|dev_docs|cmmlu(?:_cs)?|hive(?:_corpus)?)"
+    r":[A-Za-z0-9_.:/-]{6,}\b",
+    re.IGNORECASE,
+)
+_PAREN_INTERNAL_ID_RE = re.compile(
+    r"[（(]\s*(?:source_id\s*=\s*)?(?:ai_job|interview_zh|dev_docs|cmmlu(?:_cs)?|hive(?:_corpus)?)"
+    r":[A-Za-z0-9_.:/-]{6,}\s*[）)]",
+    re.IGNORECASE,
+)
+_BARE_HASH_FOOTNOTE_RE = re.compile(
+    r"[（(]\s*[a-f0-9]{12,}\s*[）)]",
+    re.IGNORECASE,
+)
+
+
+def strip_internal_ids(text: str) -> str:
+    """Remove residual internal KB ids from model output without harming normal tech terms."""
+    if not text:
+        return text
+    cleaned = _PAREN_INTERNAL_ID_RE.sub("", text)
+    cleaned = _SOURCE_ID_EQ_RE.sub("", cleaned)
+    cleaned = _PREFIXED_ID_RE.sub("", cleaned)
+    cleaned = _BARE_HASH_FOOTNOTE_RE.sub("", cleaned)
+    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned.strip()
 
 
 def _article_key(law_name: str, article_no: str) -> tuple[str, str]:

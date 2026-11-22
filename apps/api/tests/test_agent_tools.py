@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from lawbot.agent.citations import format_basis_line, repair_citations, status_label
+from lawbot.agent.citations import (
+    format_basis_line,
+    repair_citations,
+    status_label,
+    strip_internal_ids,
+)
 from lawbot.agent.graph import run_agent_stream
 from lawbot.agent.self_check import run_self_check
 from lawbot.agent.tools import ToolContext, execute_legal_turn, execute_tool
@@ -175,7 +180,21 @@ def test_missing_status_is_not_guessed_valid():
     assert "效力未标注" in line
     assert "现行有效" not in line
     assert "2008-01-01" in line
-    assert "labor-38" in line
+    assert "labor-38" not in line
+    assert "source_id" not in line
+
+
+def test_strip_internal_ids_removes_kb_keys_not_tech_words():
+    dirty = (
+        "可参考 source_id=ai_job:a9f596a29ed8295a 与 （interview_zh:qa:777）。"
+        "学习 FastAPI Depends 与 Docker。"
+    )
+    clean = strip_internal_ids(dirty)
+    assert "source_id=" not in clean
+    assert "ai_job:" not in clean
+    assert "interview_zh:" not in clean
+    assert "FastAPI" in clean
+    assert "Docker" in clean
 
 
 def test_named_missing_article_does_not_substitute_another():

@@ -67,6 +67,7 @@ def main() -> int:
             "hive_corpus",
             "cmmlu_cs",
             "ai_job_zh",
+            "mock_interview_zh",
             "both",
             "career_all",
         ),
@@ -158,13 +159,21 @@ def main() -> int:
         sources = [args.source]
     from lawbot.rag.factory import ensure_memory_loaded, get_memory_stores
 
-    # Domain D writes to an isolated memory dir (never main search_kb).
+    # Isolated dirs — never main chat search_kb.
     self_test_dir = str(resolve_rag_memory_dir(os.environ.get("RAG_SELF_TEST_DIR") or "data/rag_memory_self_test"))
+    mock_dir = str(
+        resolve_rag_memory_dir(os.environ.get("RAG_MOCK_INTERVIEW_DIR") or "data/rag_memory_mock_interview")
+    )
 
     all_stats = []
     for i, src in enumerate(sources):
         dataset = args.dataset_dir or SOURCE_DEFAULT_DATASET.get(src) or ""
-        target_dir = self_test_dir if src == "cmmlu_cs" else memory_dir
+        if src == "cmmlu_cs":
+            target_dir = self_test_dir
+        elif src == "mock_interview_zh":
+            target_dir = mock_dir
+        else:
+            target_dir = memory_dir
         if args.backend == "memory":
             reset_memory_stores_for_tests()
             if not args.recreate:
@@ -199,25 +208,43 @@ def main() -> int:
         all_stats.append(stats)
 
     if args.backend == "memory":
+        smoke_dir = mock_dir if args.source == "mock_interview_zh" else memory_dir
         reset_memory_stores_for_tests()
-        retriever = build_retriever(
-            RetrieverSettings(
-                mode="memory",
-                memory_dir=memory_dir,
-                embedding_mode=emb_mode or "fake",
-                embedding_model=emb_model or "",
-                embedding_api_key=emb_key or "",
-                embedding_api_base=emb_base,
-                embedding_dim=int(emb_dim or 384),
+        from lawbot.rag.factory import build_isolated_memory_retriever
+
+        if args.source == "mock_interview_zh":
+            retriever = build_isolated_memory_retriever(
+                RetrieverSettings(
+                    mode="memory",
+                    memory_dir=smoke_dir,
+                    embedding_mode=emb_mode or "fake",
+                    embedding_model=emb_model or "",
+                    embedding_api_key=emb_key or "",
+                    embedding_api_base=emb_base,
+                    embedding_dim=int(emb_dim or 384),
+                )
             )
-        )
+        else:
+            retriever = build_retriever(
+                RetrieverSettings(
+                    mode="memory",
+                    memory_dir=smoke_dir,
+                    embedding_mode=emb_mode or "fake",
+                    embedding_model=emb_model or "",
+                    embedding_api_key=emb_key or "",
+                    embedding_api_base=emb_base,
+                    embedding_dim=int(emb_dim or 384),
+                )
+            )
         hits = retriever.retrieve(args.query, top_k=3)
-        print(f"smoke query={args.query!r} hits={len(hits)}")
+        print(f"smoke query={args.query!r} dir={smoke_dir} hits={len(hits)}")
         for h in hits:
             sid = h.citation.source_id
             print(f"  - {sid} | {h.citation.domain} | {h.citation.law_name[:60]}")
             if str(sid).startswith("fake-"):
                 print("WARNING: fake citation in memory mode")
+            if args.source == "mock_interview_zh" and h.citation.domain != "mock_interview":
+                print("WARNING: unexpected domain in mock bank")
     return 0
 
 

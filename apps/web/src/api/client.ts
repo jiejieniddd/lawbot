@@ -218,6 +218,27 @@ export async function api<T>(path: string, options: RequestInit = {}, retried = 
   return res.json()
 }
 
+/** Authenticated binary fetch (Bearer + refresh). Never put tokens in the URL. */
+export async function apiBlob(path: string, options: RequestInit = {}, retried = false): Promise<Blob> {
+  const headers = new Headers(options.headers || {})
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
+  if (res.status === 401 && !isAuthExempt(path) && !retried) {
+    const ok = await refreshAccessToken()
+    if (ok) return apiBlob(path, options, true)
+    handleUnauthorized()
+  }
+  if (res.status === 401) {
+    handleUnauthorized()
+  }
+  if (!res.ok) {
+    await throwHttpError(res, '文件加载失败')
+  }
+  return res.blob()
+}
+
 export type ChatEvent = {
   type: 'token' | 'citation' | 'done' | 'error' | 'status'
   data: Record<string, unknown>

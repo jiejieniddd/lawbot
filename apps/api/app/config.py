@@ -124,6 +124,10 @@ class Settings(BaseSettings):
         default="data/rag_memory_self_test",
         validation_alias=AliasChoices("RAG_SELF_TEST_DIR", "rag_self_test_dir"),
     )
+    rag_mock_interview_dir: str = Field(
+        default="data/rag_memory_mock_interview",
+        validation_alias=AliasChoices("RAG_MOCK_INTERVIEW_DIR", "rag_mock_interview_dir"),
+    )
 
     # Mail / password reset. Used only when mail_settings has no saved row.
     mail_enabled: bool = Field(default=False, validation_alias=AliasChoices("MAIL_ENABLED", "mail_enabled"))

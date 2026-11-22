@@ -6,14 +6,16 @@ ANSWER_SYSTEM_PROMPT = """你是 CareerBot，面向计算机专业大学生的�
 
 硬性约束：
 1. 用户用大白话即可；不要强迫用户先选「岗位方向编码」。
-2. 只能依据消息中的「检索知识点」引用资料；禁止捏造未出现的 source_id、标题或原文。
-3. 检索为空时：说明未检索到直接依据，仍可给一般性学习/求职建议，但不得编造引用或虚构 source_id。
-4. 若上下文含 match_job / 【匹配】结构化报告：优先复述匹配分、已匹配/缺口/改写建议；**不得改写 match_score 数值**。
-5. 禁止协助招聘站爬虫、绕过验证码、无人值守自动投递；若用户要求自动投递，只给匹配分析要点与人工投递清单。
-6. 语气务实、克制；职业建议仅供参考。全程 Markdown；禁止 HTML。
-7. 仅做求职/面试/计算机技术答疑；领域外任务短拒。
+2. 只能依据消息中的「检索知识点」引用资料；禁止捏造未出现的标题或原文，禁止假装检索到了并不存在的内容。
+3. 检索为空时：说明未检索到直接依据，仍可给一般性学习/求职建议，但不得编造引用或假装有资料依据。
+4. 对用户可见的回答中**禁止**输出内部主键或脚注 ID：不得写 source_id=…，不得写 ai_job: / interview_zh: / dev_docs: / hive / cmmlu 等带哈希的内部编号，也不得用括号脚注形式复述这些 ID。引用时只用可读的标题、分类与要点。
+5. 若上下文含 match_job / 【匹配】结构化报告：优先复述匹配分、已匹配/缺口/改写建议；**不得改写 match_score 数值**。
+6. 禁止协助招聘站爬虫、绕过验证码、无人值守自动投递；若用户要求自动投递，只给匹配分析要点与人工投递清单。
+7. 语气务实、克制；职业建议仅供参考。全程 Markdown；禁止 HTML。
+8. 仅做求职/面试/计算机技术答疑；领域外任务短拒。
 
-请按下列口语化 Markdown 结构输出（可微调措辞，须覆盖各块；严格控制篇幅）：
+请按下列口语化 Markdown 结构输出（可微调措辞，须覆盖各块；严格控制篇幅）。
+总长受上限约束：宁可各块更短，也要完整收束五段；优先写完「你可以怎么做」再展开「方向或要点」细节，避免半句或未闭合引号处结束。
 
 ## 简单说
 不超过 2 句，回应用户最关心的事
@@ -129,6 +131,7 @@ FACTS_SUFFICIENCY_SYSTEM_PROMPT = """你是求职咨询事实充足性判断器�
 
 
 def format_citation_block(citations: list[dict[str, Any]] | None) -> str:
+    """Format retrieval hits for LLM context without internal source_id keys."""
     cites = citations or []
     if not cites:
         return "（无）"
@@ -137,10 +140,10 @@ def format_citation_block(citations: list[dict[str, Any]] | None) -> str:
         title = c.get("law_name") or c.get("title") or ""
         category = c.get("article_no") or c.get("category") or ""
         text = c.get("text") or ""
-        source_id = c.get("source_id") or ""
         domain = c.get("domain") or ""
         prefix = f"[{domain}] " if domain else ""
-        lines.append(f"- {prefix}{title} / {category}（source_id={source_id}）：{text}")
+        label = f"{title} / {category}" if category else str(title)
+        lines.append(f"- {prefix}{label}：{text}")
     return "\n".join(lines)
 
 
@@ -312,7 +315,8 @@ def assemble_answer_context(
         parts.append(optional)
     parts.append("检索知识点：\n" + cite_block)
     parts.append(
-        "请依据上述检索与简历槽位作答；无检索则明确说明，不要编造 source_id。"
+        "请依据上述检索与简历槽位作答；无检索则明确说明未检索到直接依据，不要假装有资料依据，"
+        "也不要在回答中输出任何内部知识库编号或脚注哈希。"
         "若有面试追问方向，给出 2–3 条方向即可，不要编造标准答案。"
     )
     return "\n\n".join(parts)
@@ -409,7 +413,7 @@ FOLLOWUP_SYSTEM_PROMPT = """你是 CareerBot。用户要咨询求职/面试问�
 - 只追问给定的缺失项，一次只问最关键的一项，用口语。
 - 回复中必须原样保留给出的「请补充：…」这一句。
 - 不要检索、不要下确定性结论，不要使用完整长报告模板。
-- 禁止编造 source_id 或假装已检索。
+- 禁止假装已检索；禁止输出内部知识库编号。
 """
 
 STAGED_SYSTEM_PROMPT = """你是 CareerBot。关键信息仍不足，且追问已到上限。
@@ -424,7 +428,7 @@ NO_BASIS_SYSTEM_PROMPT = """你是 CareerBot。已经检索，但没有达到可
 规则：
 - 必须说明「未检索到明确依据」，检索结果视为（无）。
 - 可以给一般性学习/求职方向建议。
-- 禁止编造 source_id 或把未检索到的内容说成已查到。
+- 禁止把未检索到的内容说成已查到；禁止在回答中输出内部知识库编号。
 """
 
 
@@ -460,9 +464,9 @@ def build_no_basis_user_prompt(
         f"对话：\n{dialogue or issue}\n"
         f"主题：{case_type}\n"
         "检索结果：（无）\n"
-        "未检索到明确依据。请说明不能引用具体知识点，"
+        "未检索到明确依据。请说明未检索到直接依据、不能引用具体知识点，"
         "并给一句可执行的学习/求职方向建议。"
-        "禁止编造 source_id。"
+        "禁止假装有资料依据，禁止输出内部知识库编号。"
     )
 
 

@@ -122,6 +122,30 @@ button:focus-visible,
   transform: none;
 }
 
+/* MessageBox solid danger confirm: ink text on peach (theme-aware) */
+.el-message-box__btns .el-button--danger.cb-msgbox-danger {
+  color: var(--color-ink) !important;
+  background: var(--color-peach) !important;
+  border: 2px solid var(--color-ink) !important;
+  box-shadow: 4px 4px 0 var(--color-ink) !important;
+  font-weight: 700;
+}
+
+.el-message-box__btns .el-button--danger.cb-msgbox-danger:hover,
+.el-message-box__btns .el-button--danger.cb-msgbox-danger:focus {
+  color: var(--color-ink) !important;
+  background: var(--color-peach) !important;
+  border-color: var(--color-ink) !important;
+  transform: translateY(-2px);
+  box-shadow: 5px 5px 0 var(--color-ink) !important;
+}
+
+.el-message-box__btns .el-button--danger.cb-msgbox-danger:active {
+  color: var(--color-ink) !important;
+  transform: translateY(1px);
+  box-shadow: 2px 2px 0 var(--color-ink) !important;
+}
+
 .el-button.is-circle {
   border-radius: 0 !important;
 }

@@ -1,4 +1,4 @@
-import { Layout, Menu, Spin, Typography } from 'antd'
+import { Layout, Menu, Spin } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { adminLogout } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -27,7 +27,7 @@ export default function AdminLayout() {
 
   if (loading) {
     return (
-      <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
+      <div className="admin-loading">
         <Spin size="large" tip="加载账号权限…" />
       </div>
     )
@@ -35,12 +35,14 @@ export default function AdminLayout() {
 
   return (
     <Layout className="admin-shell">
-      <Sider theme="dark" width={220} className="admin-sider">
-        <div style={{ color: '#fff', padding: 16, fontFamily: 'Georgia, serif', fontSize: 20 }}>
-          律问后台
+      <Sider width={232} theme="light" className="admin-sider" breakpoint="lg" collapsedWidth={0}>
+        <div className="admin-brand">
+          CareerBot
+          <span className="admin-brand-sub">Admin</span>
         </div>
         <Menu
-          theme="dark"
+          className="admin-menu"
+          theme="light"
           mode="inline"
           selectedKeys={[selected]}
           onClick={({ key }) => nav(key)}
@@ -48,27 +50,20 @@ export default function AdminLayout() {
         />
       </Sider>
       <Layout className="admin-main">
-        <Header
-          style={{
-            background: '#fff',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingInline: 24,
-            flexShrink: 0,
-          }}
-        >
-          <Typography.Text type="secondary">
-            CareerBot 后台
+        <Header className="admin-header">
+          <span className="admin-header-meta">
+            管理控制台
             {me?.display_name || me?.email ? ` · ${me.display_name || me.email}` : ''}
-          </Typography.Text>
-          <a
+          </span>
+          <button
+            type="button"
+            className="admin-logout"
             onClick={() => {
               void adminLogout().finally(() => nav('/login'))
             }}
           >
             退出
-          </a>
+          </button>
         </Header>
         <Content className="admin-content">
           <Outlet />

@@ -279,7 +279,7 @@ def test_stream_truncated_keeps_partial_and_footer(monkeypatch):
     )
     events = list(
         run_agent_stream(
-            "用人单位拖欠工资，劳动者能否解除劳动合同",
+            "大三计算机想做后端，常见面试题怎么准备",
             "req-llm-trunc",
             retriever=FakeRetriever(),
             credentials=creds,
@@ -291,12 +291,52 @@ def test_stream_truncated_keeps_partial_and_footer(monkeypatch):
     joined = "".join(e.data["text"] for e in tokens)
     assert "已生成前半段" in joined
     assert "可能不完整" in joined
+    assert "篇幅受限" not in joined
     assert "流式中断，正在改用备用通道" not in "".join(
         str(e.data.get("message") or "") for e in events if isinstance(e, ChatEvent) and e.type == "status"
     )
     assert finals
     assert "已生成前半段" in (finals[-1].get("answer") or "")
     assert "可能不完整" in (finals[-1].get("answer") or "")
+    assert finals[-1]["used_mock"] is False
+
+
+def test_stream_length_truncated_keeps_partial_and_length_footer(monkeypatch):
+    def boom_complete(**_kwargs):
+        raise AssertionError("length-truncated partial must not fall back to complete_text")
+
+    def length_stream(*, prompt: str, credentials, system: str | None = None):
+        yield "## 简单说\n\n已生成前半段，停在半句「"
+        raise StreamTruncatedError(kind="length", chars_emitted=30, provider="mock")
+
+    monkeypatch.setattr("lawbot.agent.graph.complete_text", boom_complete)
+    monkeypatch.setattr("lawbot.agent.graph.complete_text_stream", length_stream)
+
+    creds = ProviderCredentials(
+        provider=SimpleNamespace(id="p1", name="mock", provider="openai"),  # type: ignore[arg-type]
+        api_key="k",
+        model="m",
+        base_url=None,
+    )
+    events = list(
+        run_agent_stream(
+            "大三计算机想做后端，常见面试题怎么准备",
+            "req-llm-length",
+            retriever=FakeRetriever(),
+            credentials=creds,
+            mock_sleep=0,
+        )
+    )
+    tokens = [e for e in events if isinstance(e, ChatEvent) and e.type == "token"]
+    finals = [e for e in events if not isinstance(e, ChatEvent)]
+    joined = "".join(e.data["text"] for e in tokens)
+    assert "已生成前半段" in joined
+    assert "篇幅受限" in joined
+    assert "追问补全" in joined
+    assert "生成超时" not in joined
+    assert finals
+    assert "篇幅受限" in (finals[-1].get("answer") or "")
+    assert "生成超时" not in (finals[-1].get("answer") or "")
     assert finals[-1]["used_mock"] is False
 
 

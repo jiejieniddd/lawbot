@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Form, Input, Typography } from 'antd'
+import { Alert, Button, Form, Input } from 'antd'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, setAdminTokens } from '../api/client'
@@ -26,31 +26,24 @@ export default function LoginPage() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        background: 'linear-gradient(160deg,#d9e2ec,#f7f4ef)',
-      }}
-    >
-      <Card style={{ width: 400 }}>
-        <Typography.Title level={3} style={{ fontFamily: 'Georgia, serif' }}>
-          律问后台
-        </Typography.Title>
-        {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} />}
-        <Form layout="vertical" onFinish={onFinish}>
+    <div className="login-page">
+      <div className="login-card">
+        <span className="blob-badge">Admin</span>
+        <h1>CareerBot</h1>
+        <p className="login-lead">使用管理员账号登录控制台</p>
+        {error ? <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon /> : null}
+        <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
           <Form.Item name="email" label="账号" rules={[{ required: true, message: '请输入账号' }]}>
-            <Input placeholder="请输入账号" autoComplete="username" />
+            <Input placeholder="请输入账号" autoComplete="username" size="large" />
           </Form.Item>
           <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password placeholder="密码" autoComplete="current-password" />
+            <Input.Password placeholder="密码" autoComplete="current-password" size="large" />
           </Form.Item>
-          <Button type="primary" htmlType="submit" block loading={loading}>
+          <Button type="primary" htmlType="submit" block loading={loading} size="large">
             登录
           </Button>
         </Form>
-      </Card>
+      </div>
     </div>
   )
 }

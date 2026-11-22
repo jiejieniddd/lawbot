@@ -87,6 +87,13 @@ def test_kb_domains_career_advice_prefers_job_skills():
     assert _kb_domains_for_intent("interview_qa") == ["interview_qa"]
 
 
+def test_mock_interview_domain_blocked_from_main_search():
+    from lawbot.knowledge.importers import MAIN_SEARCH_DOMAIN_BLOCKLIST
+
+    assert "mock_interview" in MAIN_SEARCH_DOMAIN_BLOCKLIST
+    assert "self_test" in MAIN_SEARCH_DOMAIN_BLOCKLIST
+
+
 def test_topic_filter_no_domain_freepass():
     hit = {
         "domain": "interview_qa",

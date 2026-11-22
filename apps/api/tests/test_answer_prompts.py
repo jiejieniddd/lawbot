@@ -47,13 +47,17 @@ def test_user_prompt_with_citations_and_empty():
     )
     assert "FastAPI 依赖注入怎么用" in with_cites
     assert "FastAPI Depends" in with_cites
-    assert "src-1" in with_cites
+    assert "Depends 用于声明可复用依赖" in with_cites
+    assert "src-1" not in with_cites
+    assert "source_id=" not in with_cites
+    assert "source_id" not in with_cites
     assert "检索知识点" in with_cites
-    assert "不要编造 source_id" in with_cites
+    assert "未检索到直接依据" in with_cites or "不要假装" in with_cites
 
     empty = build_answer_user_prompt(query="冷门技术问题", case_type="general", citations=[])
     assert "（无）" in empty or format_citation_block([]) == "（无）"
-    assert "不要编造 source_id" in empty
+    assert "source_id" not in empty
+    assert "未检索到直接依据" in empty or "不要假装" in empty
 
 
 def test_mock_answer_analytical_with_and_without_citations():

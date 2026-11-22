@@ -4,6 +4,7 @@ import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import ForgotPasswordView from '../views/ForgotPasswordView.vue'
 import ChatView from '../views/ChatView.vue'
+import InterviewView from '../views/InterviewView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -14,6 +15,8 @@ const router = createRouter({
     { path: '/forgot-password', component: ForgotPasswordView },
     { path: '/chat', component: ChatView, meta: { requiresAuth: true } },
     { path: '/chat/:id', component: ChatView, meta: { requiresAuth: true } },
+    { path: '/interview', component: InterviewView, meta: { requiresAuth: true } },
+    { path: '/interview/:id', component: InterviewView, meta: { requiresAuth: true } },
     { path: '/profile', redirect: { path: '/chat', query: { settings: '1' } } },
   ],
 })

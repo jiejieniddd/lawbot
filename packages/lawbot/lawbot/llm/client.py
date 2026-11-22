@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 _DEFAULT_LLM_TIMEOUT_SECONDS = 60.0
 _DEFAULT_LLM_STREAM_IDLE_SECONDS = 120.0
 _DEFAULT_LLM_STREAM_MAX_SECONDS = 480.0
-_DEFAULT_LLM_ANSWER_MAX_TOKENS = 800
+_DEFAULT_LLM_ANSWER_MAX_TOKENS = 1600
 _PROFILE_ANSWER_MAX_TOKENS = {
-    "normal": 800,
-    "compact": 500,
+    "normal": 1600,
+    "compact": 800,
 }
 
 
@@ -54,7 +54,7 @@ def get_llm_stream_max_seconds() -> float:
 def get_llm_answer_max_tokens() -> int:
     """Max tokens for streamed legal answers only (not short classify JSON).
 
-    Precedence: LLM_ANSWER_MAX_TOKENS > LLM_ANSWER_PROFILE (normal=800, compact=500) > 800.
+    Precedence: LLM_ANSWER_MAX_TOKENS > LLM_ANSWER_PROFILE (normal=1600, compact=800) > 1600.
     """
     raw = (os.environ.get("LLM_ANSWER_MAX_TOKENS") or "").strip()
     if raw:
@@ -81,7 +81,7 @@ class StreamTruncatedError(Exception):
     """Raised when a live stream is cut by idle or max timeout after some tokens may have been yielded."""
 
     def __init__(self, *, kind: str, chars_emitted: int, provider: str = "") -> None:
-        self.kind = kind  # "idle" | "max"
+        self.kind = kind  # "idle" | "max" | "length"
         self.chars_emitted = int(chars_emitted)
         self.provider = provider or ""
         super().__init__(
@@ -252,8 +252,8 @@ def complete_text_stream(
     """Yield text deltas from LiteLLM stream=True.
 
     Empty iterator on failure / no credentials.
-    Raises StreamTruncatedError on stream idle or max timeout (partial tokens already yielded).
-    max_tokens defaults to LLM_ANSWER_MAX_TOKENS (answer streams only).
+    Raises StreamTruncatedError on stream idle/max timeout, or when finish_reason=length
+    (tokens already yielded). max_tokens defaults to LLM_ANSWER_MAX_TOKENS (answer streams only).
     """
     if credentials is None:
         return
@@ -275,6 +275,7 @@ def complete_text_stream(
     max_deadline = started + max_seconds
     idle_deadline = started + idle_seconds
     chars_emitted = 0
+    finish_reason: str | None = None
 
     try:
         stream = litellm.completion(
@@ -312,12 +313,26 @@ def complete_text_stream(
             choices = getattr(chunk, "choices", None) or []
             if not choices:
                 continue
-            delta = getattr(choices[0], "delta", None)
+            choice0 = choices[0]
+            reason = getattr(choice0, "finish_reason", None)
+            if reason:
+                finish_reason = str(reason)
+            delta = getattr(choice0, "delta", None)
             text = getattr(delta, "content", None) if delta is not None else None
             if text:
                 chars_emitted += len(text)
                 idle_deadline = time.monotonic() + idle_seconds
                 yield text
+        if finish_reason == "length":
+            logger.warning(
+                "LiteLLM stream truncated kind=length max_tokens=%s provider=%s chars_emitted=%s",
+                answer_max_tokens,
+                provider_name,
+                chars_emitted,
+            )
+            raise StreamTruncatedError(
+                kind="length", chars_emitted=chars_emitted, provider=provider_name
+            )
     except StreamTruncatedError:
         raise
     except Exception:

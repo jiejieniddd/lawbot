@@ -136,3 +136,40 @@ def build_retriever(settings: RetrieverSettings):
         embed_query=embed_query,
         rrf_k=settings.rrf_k,
     )
+
+
+def build_isolated_memory_retriever(settings: RetrieverSettings):
+    """Load a memory index into private stores (does not touch the process-global chat index)."""
+    mem_dir = settings.memory_dir or DEFAULT_MEMORY_DIR
+    resolved = resolve_rag_memory_dir(mem_dir)
+    vec = InMemoryVectorStore()
+    bm25 = InMemoryBM25Store()
+    _, _, count = load_memory_index(resolved, vector_store=vec, bm25_store=bm25)
+    logger.info("isolated memory retriever ready docs=%s dir=%s", count, resolved)
+
+    _embed_query_cache: dict[str, list[float]] = {}
+
+    def embed_query(q: str) -> list[float]:
+        key = (q or "").strip()
+        cached = _embed_query_cache.get(key)
+        if cached is not None:
+            return cached
+        out = embed_texts(
+            [q],
+            model=settings.embedding_model,
+            api_key=settings.embedding_api_key,
+            api_base=settings.embedding_api_base,
+            dim=settings.embedding_dim,
+            mode=settings.embedding_mode,
+        )[0]
+        if len(_embed_query_cache) >= 64:
+            _embed_query_cache.clear()
+        _embed_query_cache[key] = out
+        return out
+
+    return HybridRetriever(
+        vector_search=lambda qv, k, domains=None: vec.search(qv, top_k=k, domains=domains),
+        bm25_search=lambda q, k, domains=None: bm25.search(q, top_k=k, domains=domains),
+        embed_query=embed_query,
+        rrf_k=settings.rrf_k,
+    )

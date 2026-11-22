@@ -4,12 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ChatDotRound, Close, Delete, Document, Paperclip, Promotion, Setting } from '@element-plus/icons-vue'
 import { api, streamChat, type ChatEvent, type Citation } from '../api/client'
-import CitationCard from '../components/CitationCard.vue'
+import ResumePreviewDialog from '../components/settings/ResumePreviewDialog.vue'
 import SettingsModal from '../components/settings/SettingsModal.vue'
 import PixelToggle from '../components/theme/PixelToggle.vue'
 import { CAREER_DISCLAIMER } from '../constants/disclaimer'
 import { useAuthStore } from '../stores/auth'
-import { useJdStore } from '../stores/jd'
 import { useResumeStore } from '../stores/resume'
 import { useThemeStore } from '../stores/theme'
 import { renderMarkdown } from '../utils/markdown'
@@ -29,7 +28,6 @@ type Message = {
 
 const auth = useAuthStore()
 const resumeStore = useResumeStore()
-const jdStore = useJdStore()
 const themeStore = useThemeStore()
 const route = useRoute()
 const router = useRouter()
@@ -38,11 +36,12 @@ const conversations = ref<Conversation[]>([])
 const messages = ref<Message[]>([])
 const input = ref('')
 const sending = ref(false)
+/** Conversation id currently streaming; used to skip empty GET /messages overwrites. */
+const streamingConvId = ref('')
 const loadingList = ref(false)
 const loadingMessages = ref(false)
 const deletingId = ref('')
 const streamingText = ref('')
-const streamingCitations = ref<Citation[]>([])
 const streamStatus = ref('正在检索…')
 const showStreamStatus = ref(true)
 const disclaimer = CAREER_DISCLAIMER
@@ -101,6 +100,8 @@ async function loadConversations() {
 }
 
 async function loadMessages(id: string) {
+  // First-send race: route watch must not replace optimistic user bubble with [].
+  if (sending.value && streamingConvId.value === id) return
   loadingMessages.value = true
   try {
     messages.value = await api<Message[]>(`/api/v1/conversations/${id}/messages`)
@@ -156,7 +157,7 @@ async function deleteConversation(id: string, e?: Event) {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',
-      confirmButtonClass: 'el-button--danger',
+      confirmButtonClass: 'el-button--danger cb-msgbox-danger',
     })
   } catch {
     return
@@ -169,7 +170,6 @@ async function deleteConversation(id: string, e?: Event) {
     if (activeId.value === id) {
       messages.value = []
       streamingText.value = ''
-      streamingCitations.value = []
       await router.push('/chat')
     }
   } catch (err) {
@@ -190,7 +190,9 @@ function onComposerKeydown(e: KeyboardEvent) {
 
 async function send() {
   if (!input.value.trim() || sending.value) return
+  const content = input.value.trim()
   let cid = activeId.value
+  let needNavigate = false
   if (!cid) {
     try {
       const conv = await api<Conversation>('/api/v1/conversations', {
@@ -198,23 +200,27 @@ async function send() {
         body: JSON.stringify({}),
       })
       cid = conv.id
+      needNavigate = true
       await loadConversations()
-      router.replace(`/chat/${cid}`)
     } catch (e) {
       ElMessage.error((e as Error).message || '创建会话失败')
       return
     }
   }
 
-  const content = input.value.trim()
   input.value = ''
+  // Optimistic user bubble before route replace so watch cannot wipe with [].
   messages.value.push({ role: 'user', content })
   sending.value = true
+  streamingConvId.value = cid
   streamingText.value = ''
-  streamingCitations.value = []
   streamStatus.value = '正在检索…'
   showStreamStatus.value = true
   scrollToBottom()
+
+  if (needNavigate) {
+    void router.replace(`/chat/${cid}`)
+  }
 
   const controller = new AbortController()
   let idleTimer: ReturnType<typeof setTimeout> | null = null
@@ -246,24 +252,20 @@ async function send() {
           streamingText.value += String(ev.data.text || '')
           scrollToBottom()
         } else if (ev.type === 'citation') {
-          streamingCitations.value.push(ev.data as unknown as Citation)
-          scrollToBottom()
+          // Backend may still emit citations for RAG; UI no longer displays them.
         } else if (ev.type === 'done') {
           messages.value.push({
             id: String(ev.data.message_id || ''),
             role: 'assistant',
             content: streamingText.value,
-            citations: [...streamingCitations.value],
           })
           streamingText.value = ''
-          streamingCitations.value = []
           showStreamStatus.value = false
           scrollToBottom()
           void loadConversations()
         } else if (ev.type === 'error') {
           ElMessage.error(chineseErrorMessage(ev.data.message, '生成失败，请稍后重试'))
           streamingText.value = ''
-          streamingCitations.value = []
           showStreamStatus.value = false
         }
       },
@@ -276,11 +278,9 @@ async function send() {
       messages.value.push({
         role: 'assistant',
         content: streamingText.value,
-        citations: [...streamingCitations.value],
       })
       ElMessage.warning('生成超时，内容可能不完整')
       streamingText.value = ''
-      streamingCitations.value = []
       showStreamStatus.value = false
       scrollToBottom()
     } else {
@@ -291,12 +291,12 @@ async function send() {
           : chineseErrorMessage(e, '生成失败，请稍后重试'),
       )
       streamingText.value = ''
-      streamingCitations.value = []
       showStreamStatus.value = false
     }
   } finally {
     clearIdle()
     sending.value = false
+    streamingConvId.value = ''
   }
 }
 
@@ -350,7 +350,6 @@ onMounted(async () => {
   try {
     await auth.fetchMe()
     await resumeStore.fetchActive().catch(() => undefined)
-    await jdStore.fetchActive().catch(() => undefined)
   } catch (e) {
     ElMessage.error((e as Error).message || '获取用户信息失败')
   }
@@ -361,8 +360,13 @@ onMounted(async () => {
 watch(
   () => route.params.id,
   async (id) => {
-    if (id) await loadMessages(id as string)
-    else messages.value = []
+    if (!id) {
+      messages.value = []
+      return
+    }
+    // Streaming into this conversation: keep optimistic local messages.
+    if (sending.value && streamingConvId.value === id) return
+    await loadMessages(id as string)
   },
 )
 
@@ -389,6 +393,10 @@ watch(
           <span class="brand-text">CareerBot</span>
           <span class="brand-badge" aria-hidden="true" />
         </div>
+        <nav class="rail-nav">
+          <router-link class="nav-link active" to="/chat">求职助手</router-link>
+          <router-link class="nav-link" to="/interview">模拟面试</router-link>
+        </nav>
         <el-button type="primary" class="new-chat" @click="createConversation">新咨询</el-button>
       </div>
       <div v-loading="loadingList" class="session-list">
@@ -444,26 +452,16 @@ watch(
           v-if="resumeStore.badgeLabel"
           type="button"
           class="resume-chip"
-          title="打开设置上传/管理简历"
-          @click="settingsOpen = true"
+          title="查看当前简历"
+          @click="resumeStore.openPreview()"
         >
           <el-icon :size="14"><Document /></el-icon>
           {{ resumeStore.badgeLabel }}
         </button>
-        <button
-          v-if="jdStore.badgeLabel"
-          type="button"
-          class="resume-chip mint"
-          title="打开设置上传/管理 JD"
-          @click="settingsOpen = true"
-        >
-          <el-icon :size="14"><Document /></el-icon>
-          {{ jdStore.badgeLabel }}
-        </button>
         <div class="stage-bar-actions">
           <PixelToggle
             :checked="themeStore.isLight"
-            :height="44"
+            :height="28"
             :sound="true"
             @update:checked="themeStore.setLight"
           />
@@ -496,9 +494,6 @@ watch(
               v-html="renderMarkdown(m.content)"
             />
             <div v-else class="speech user">{{ m.content }}</div>
-            <div v-if="m.citations?.length" class="cites">
-              <CitationCard v-for="c in m.citations" :key="c.source_id" :citation="c" />
-            </div>
           </article>
           <article v-if="isStreaming" class="turn assistant">
             <div
@@ -509,13 +504,6 @@ watch(
             <div v-if="showStreamStatus || !streamingText" class="stream-live" aria-live="polite">
               <span class="stream-dot" />
               {{ streamStatus }}
-            </div>
-            <div v-if="streamingCitations.length" class="cites">
-              <CitationCard
-                v-for="c in streamingCitations"
-                :key="c.source_id"
-                :citation="c"
-              />
             </div>
           </article>
           <div ref="messagesEndEl" class="thread-end" aria-hidden="true" />
@@ -588,6 +576,7 @@ watch(
     </section>
   </div>
   <SettingsModal v-model:open="settingsOpen" />
+  <ResumePreviewDialog />
 </template>
 
 <style scoped>
@@ -639,6 +628,27 @@ watch(
   background: var(--color-sunny);
   border: 2px solid var(--color-ink);
   flex-shrink: 0;
+}
+
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.nav-link {
+  border: 3px solid var(--color-ink);
+  padding: 8px 10px;
+  text-decoration: none;
+  color: inherit;
+  font-weight: var(--font-weight-bold);
+  background: var(--surface);
+}
+
+.nav-link.active {
+  background: var(--color-sunny);
+  box-shadow: 3px 3px 0 var(--color-ink);
 }
 
 .new-chat {
@@ -1167,14 +1177,6 @@ watch(
   padding: 0;
   background: transparent;
   border: 0;
-}
-
-.cites {
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: min(640px, 100%);
 }
 
 .stream-live {

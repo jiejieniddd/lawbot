@@ -11,6 +11,7 @@ from lawbot.llm.client import (
     StreamTruncatedError,
     complete_text,
     complete_text_stream,
+    get_llm_answer_max_tokens,
     get_llm_stream_idle_seconds,
     get_llm_stream_max_seconds,
     get_llm_timeout_seconds,
@@ -26,8 +27,15 @@ def _creds() -> ProviderCredentials:
     )
 
 
-def _chunk(text: str):
-    return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=text))])
+def _chunk(text: str | None, *, finish_reason: str | None = None):
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                delta=SimpleNamespace(content=text),
+                finish_reason=finish_reason,
+            )
+        ]
+    )
 
 
 def test_get_llm_timeout_seconds_default(monkeypatch):
@@ -137,10 +145,43 @@ def test_complete_text_stream_normal_finish_no_truncate(monkeypatch):
 
     def quick_stream(**_kwargs):
         yield _chunk("ok")
-        yield _chunk("-done")
+        yield _chunk("-done", finish_reason="stop")
 
     monkeypatch.setattr("litellm.completion", quick_stream)
     assert list(complete_text_stream(prompt="hi", credentials=_creds())) == ["ok", "-done"]
+
+
+def test_get_llm_answer_max_tokens_default(monkeypatch):
+    monkeypatch.delenv("LLM_ANSWER_MAX_TOKENS", raising=False)
+    monkeypatch.delenv("LLM_ANSWER_PROFILE", raising=False)
+    assert get_llm_answer_max_tokens() == 1600
+
+
+def test_get_llm_answer_max_tokens_profile_and_explicit(monkeypatch):
+    monkeypatch.delenv("LLM_ANSWER_MAX_TOKENS", raising=False)
+    monkeypatch.setenv("LLM_ANSWER_PROFILE", "compact")
+    assert get_llm_answer_max_tokens() == 800
+    monkeypatch.setenv("LLM_ANSWER_MAX_TOKENS", "1200")
+    assert get_llm_answer_max_tokens() == 1200
+
+
+def test_complete_text_stream_length_finish_raises(monkeypatch):
+    monkeypatch.setenv("LLM_STREAM_IDLE_SECONDS", "30")
+    monkeypatch.setenv("LLM_STREAM_MAX_SECONDS", "60")
+
+    def length_stream(**_kwargs):
+        yield _chunk("partial")
+        yield _chunk(None, finish_reason="length")
+
+    monkeypatch.setattr("litellm.completion", length_stream)
+
+    parts: list[str] = []
+    with pytest.raises(StreamTruncatedError) as ei:
+        for piece in complete_text_stream(prompt="hi", credentials=_creds()):
+            parts.append(piece)
+    assert "".join(parts) == "partial"
+    assert ei.value.kind == "length"
+    assert ei.value.chars_emitted == len("partial")
 
 
 def test_connectivity_passes_timeout(monkeypatch):

@@ -10,6 +10,7 @@ from lawbot.knowledge.importers import (
     dev_docs_en,
     hive_corpus,
     interview_zh,
+    mock_interview_zh,
 )
 
 ImporterFn = Callable[..., Iterator[KnowledgeChunk]]
@@ -20,6 +21,7 @@ REGISTRY: dict[str, ImporterFn] = {
     "hive_corpus": hive_corpus.iter_hive_chunks,
     "cmmlu_cs": cmmlu_cs.iter_cmmlu_chunks,
     "ai_job_zh": ai_job_zh.iter_ai_job_chunks,
+    "mock_interview_zh": mock_interview_zh.iter_mock_interview_chunks,
 }
 
 SOURCE_DEFAULT_DATASET: dict[str, str] = {
@@ -29,6 +31,7 @@ SOURCE_DEFAULT_DATASET: dict[str, str] = {
     "hive_corpus": "data/hf/the-hive-corpus",
     "cmmlu_cs": "data/hf/cmmlu",
     "ai_job_zh": "data/hf/AI_Job_DataSet_1000_list",
+    "mock_interview_zh": "data/hf/Chinese_interview_large",
 }
 
 SOURCE_DOMAIN: dict[str, str] = {
@@ -37,10 +40,11 @@ SOURCE_DOMAIN: dict[str, str] = {
     "hive_corpus": hive_corpus.DOMAIN,
     "cmmlu_cs": cmmlu_cs.DOMAIN,
     "ai_job_zh": ai_job_zh.DOMAIN,
+    "mock_interview_zh": mock_interview_zh.DOMAIN,
 }
 
-# Domains never mixed into main search_kb RRF.
-MAIN_SEARCH_DOMAIN_BLOCKLIST: frozenset[str] = frozenset({"self_test"})
+# Domains never mixed into main search_kb RRF (chat).
+MAIN_SEARCH_DOMAIN_BLOCKLIST: frozenset[str] = frozenset({"self_test", "mock_interview"})
 
 
 def iter_source_chunks(
