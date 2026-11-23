@@ -3,6 +3,12 @@
 # updates do not rerun uv sync or npm install on a small server.
 services:
   api:
+    # The API starts in /workspace/apps/api. Relative upload paths would land
+    # inside the read-only source mount instead of the persistent uploads_data.
+    environment:
+      UPLOAD_DIR: /workspace/data/uploads/avatars
+      RESUME_UPLOAD_DIR: /workspace/data/uploads/resumes
+      JD_UPLOAD_DIR: /workspace/data/uploads/jds
     volumes:
       - ./packages/lawbot:/workspace/packages/lawbot:ro
       - ./apps/api:/workspace/apps/api:ro
