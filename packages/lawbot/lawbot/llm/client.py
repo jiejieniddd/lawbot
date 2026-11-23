@@ -41,6 +41,10 @@ def get_llm_timeout_seconds() -> float:
     return _env_float_seconds("LLM_TIMEOUT_SECONDS", _DEFAULT_LLM_TIMEOUT_SECONDS)
 
 
+def get_llm_aux_timeout_seconds() -> float:
+    return min(get_llm_timeout_seconds(), _env_float_seconds("LLM_AUX_TIMEOUT_SECONDS", 8.0))
+
+
 def get_llm_stream_idle_seconds() -> float:
     """Max silence between streamed chunks before truncating."""
     return _env_float_seconds("LLM_STREAM_IDLE_SECONDS", _DEFAULT_LLM_STREAM_IDLE_SECONDS)
@@ -81,7 +85,7 @@ class StreamTruncatedError(Exception):
     """Raised when a live stream is cut by idle or max timeout after some tokens may have been yielded."""
 
     def __init__(self, *, kind: str, chars_emitted: int, provider: str = "") -> None:
-        self.kind = kind  # "idle" | "max" | "length"
+        self.kind = kind  # "idle" | "max" | "length" | "error"
         self.chars_emitted = int(chars_emitted)
         self.provider = provider or ""
         super().__init__(
@@ -204,6 +208,7 @@ def _completion_kwargs(
         "messages": _completion_messages(prompt=prompt, system=system),
         "api_key": credentials.api_key,
         "stream": stream,
+        "num_retries": 0,
         "timeout": timeout if timeout is not None else get_llm_timeout_seconds(),
     }
     if credentials.base_url:
@@ -218,6 +223,8 @@ def complete_text(
     prompt: str,
     credentials: ProviderCredentials | None,
     system: str | None = None,
+    timeout: float | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Call LiteLLM when credentials present; otherwise return mock text."""
     if credentials is None:
@@ -231,14 +238,11 @@ def complete_text(
 
     try:
         resp = litellm.completion(
-            **_completion_kwargs(prompt=prompt, credentials=credentials, system=system)
+            **_completion_kwargs(prompt=prompt, credentials=credentials, system=system, timeout=timeout, max_tokens=max_tokens)
         )
         return resp.choices[0].message.content or ""
-    except Exception:
-        logger.exception(
-            "LiteLLM completion failed/timed out for provider=%s; using mock",
-            credentials.provider.name,
-        )
+    except Exception as exc:
+        logger.warning("LLM completion failed error_type=%s", type(exc).__name__)
         return ""
 
 
@@ -264,6 +268,8 @@ def complete_text_stream(
         logger.warning("litellm not installed; falling back to mock stream")
         return
 
+    if (os.environ.get("LLM_ANSWER_PROFILE") or "normal").strip().lower() == "compact":
+        system = (system or "") + "\n简洁回答：先给结论，再给必要要点；保留必要引用、澄清与安全提示，避免重复，尽量在300字内完整作答。"
     req_timeout = get_llm_timeout_seconds()
     idle_seconds = get_llm_stream_idle_seconds()
     max_seconds = get_llm_stream_max_seconds()
@@ -276,6 +282,7 @@ def complete_text_stream(
     idle_deadline = started + idle_seconds
     chars_emitted = 0
     finish_reason: str | None = None
+    stream = None
 
     try:
         stream = litellm.completion(
@@ -335,12 +342,18 @@ def complete_text_stream(
             )
     except StreamTruncatedError:
         raise
-    except Exception:
-        logger.exception(
-            "LiteLLM stream failed/timed out for provider=%s; falling back to mock",
-            provider_name,
-        )
+    except Exception as exc:
+        logger.warning("LLM stream failed error_type=%s chars_emitted=%s", type(exc).__name__, chars_emitted)
+        if chars_emitted:
+            raise StreamTruncatedError(kind="error", chars_emitted=chars_emitted) from None
         return
+    finally:
+        close = getattr(stream, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                logger.warning("LLM stream cleanup failed")
 
 
 def humanize_connectivity_error(exc: BaseException) -> str:

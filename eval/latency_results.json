@@ -1,0 +1,124 @@
+{
+  "baseline_commit": "79200be8200244dc898a624c76adb8c1d1f28bf7",
+  "environment": "Local Windows; synthetic 50ms per model call; FakeRetriever; no network; graph TTFT, not browser TTFT",
+  "before": {
+    "synthetic_request_delay_ms": 50,
+    "repeats": 5,
+    "aggregation": "median_after_warmup",
+    "results": [
+      {
+        "case": "general_interview",
+        "auxiliary": 1,
+        "stream": 1,
+        "answer_fallback": 0,
+        "ttft_ms": 123.46
+      },
+      {
+        "case": "clear_backend",
+        "auxiliary": 0,
+        "stream": 1,
+        "answer_fallback": 0,
+        "ttft_ms": 72.25
+      },
+      {
+        "case": "short_backend",
+        "auxiliary": 0,
+        "stream": 1,
+        "answer_fallback": 0,
+        "ttft_ms": 72.07
+      },
+      {
+        "case": "stream_failure",
+        "auxiliary": 0,
+        "stream": 1,
+        "answer_fallback": 1,
+        "ttft_ms": 122.82
+      }
+    ]
+  },
+  "after": {
+    "synthetic_request_delay_ms": 50,
+    "repeats": 5,
+    "aggregation": "median_after_warmup",
+    "results": [
+      {
+        "case": "general_interview",
+        "auxiliary": 0,
+        "stream": 1,
+        "answer_fallback": 0,
+        "ttft_ms": 73.74
+      },
+      {
+        "case": "clear_backend",
+        "auxiliary": 0,
+        "stream": 1,
+        "answer_fallback": 0,
+        "ttft_ms": 73.61
+      },
+      {
+        "case": "short_backend",
+        "auxiliary": 0,
+        "stream": 1,
+        "answer_fallback": 0,
+        "ttft_ms": 72.24
+      },
+      {
+        "case": "stream_failure",
+        "auxiliary": 0,
+        "stream": 1,
+        "answer_fallback": 0,
+        "ttft_ms": 72.35
+      }
+    ]
+  },
+  "baseline_tests": {
+    "passed": 42,
+    "failed": 39
+  },
+  "candidate_tests": {
+    "passed": 60,
+    "failed": 39
+  },
+  "new_failures": [],
+  "existing_failure_ids": [
+    "apps/api/tests/test_agent_memory.py::test_ambiguous_query_still_uses_case_type_llm",
+    "apps/api/tests/test_agent_memory.py::test_facts_llm_skipped_when_baseline_sufficient",
+    "apps/api/tests/test_agent_memory.py::test_fallback_case_type_labor_not_tort_from_peichang",
+    "apps/api/tests/test_agent_memory.py::test_llm_case_type_classify_clears_on_topic_shift",
+    "apps/api/tests/test_agent_memory.py::test_llm_facts_sufficient_debt_screenshot_no_dispute_followup",
+    "apps/api/tests/test_agent_memory.py::test_llm_labor_kept_without_guard",
+    "apps/api/tests/test_agent_memory.py::test_llm_tort_high_confidence_guarded_to_labor",
+    "apps/api/tests/test_agent_memory.py::test_province_note_when_local_mentioned",
+    "apps/api/tests/test_agent_memory.py::test_same_conversation_reads_prior_missing_facts",
+    "apps/api/tests/test_agent_memory.py::test_same_thread_slots_and_task_goal_persist",
+    "apps/api/tests/test_agent_memory.py::test_screenshot_labor_query_no_injury_followup",
+    "apps/api/tests/test_agent_memory.py::test_short_debt_query_still_followup_without_credentials",
+    "apps/api/tests/test_agent_memory.py::test_short_supplement_after_ask_merges_slots",
+    "apps/api/tests/test_agent_memory.py::test_short_supplement_merges_without_history_when_phase_followup",
+    "apps/api/tests/test_agent_memory.py::test_store_facts_injected_into_answer_prompt",
+    "apps/api/tests/test_agent_memory.py::test_strong_labor_oral_zero_prestream_llm",
+    "apps/api/tests/test_agent_memory.py::test_topic_switch_clears_tort_slots_and_search_query",
+    "apps/api/tests/test_agent_memory.py::test_topic_switch_debt_to_company_no_loan_slot_followup",
+    "apps/api/tests/test_agent_memory.py::test_topic_switch_debt_to_labor_no_injury_followup",
+    "apps/api/tests/test_agent_memory.py::test_topic_switch_debt_to_one_person_company_clears_debt_slots",
+    "apps/api/tests/test_agent_stream.py::test_capability_question_is_chitchat",
+    "apps/api/tests/test_agent_stream.py::test_classify_intent_rules",
+    "apps/api/tests/test_agent_stream.py::test_empty_cites_debt_streams_topic_llm",
+    "apps/api/tests/test_agent_stream.py::test_empty_cites_extort_rejects_and_guides_legal",
+    "apps/api/tests/test_agent_stream.py::test_empty_cites_without_credentials_heuristic_fallback",
+    "apps/api/tests/test_agent_stream.py::test_followup_cap_returns_staged_conclusion",
+    "apps/api/tests/test_agent_stream.py::test_high_score_food_housing_filtered_for_inheritance_query",
+    "apps/api/tests/test_agent_stream.py::test_inheritance_on_topic_hit_kept",
+    "apps/api/tests/test_agent_stream.py::test_legal_wage_query_still_uses_rag_template",
+    "apps/api/tests/test_agent_stream.py::test_llm_stream_and_complete_empty_soft_fail_uses_raw_query",
+    "apps/api/tests/test_agent_stream.py::test_llm_stream_empty_falls_back_to_complete_text",
+    "apps/api/tests/test_agent_stream.py::test_llm_stream_token_order",
+    "apps/api/tests/test_agent_stream.py::test_low_score_or_empty_retrieval_does_not_invent_articles",
+    "apps/api/tests/test_agent_stream.py::test_missing_facts_only_follow_up",
+    "apps/api/tests/test_agent_stream.py::test_mock_stream_emits_tokens_then_citations_on_success",
+    "apps/api/tests/test_agent_stream.py::test_oral_hurt_extort_is_legal_consult",
+    "apps/api/tests/test_agent_stream.py::test_out_of_scope_skips_retrieve_and_legal_template",
+    "apps/api/tests/test_agent_stream.py::test_pet_inheritance_draft_is_out_of_scope_no_offtopic_cites",
+    "apps/api/tests/test_agent_stream.py::test_second_turn_sees_followup_then_retrieves"
+  ]
+}

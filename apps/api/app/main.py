@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from app.logging_config import configure_timing_logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -36,6 +37,7 @@ from app.routers.v1 import self_quiz as v1_self_quiz
 from app.services.avatars import resolve_upload_dir, uploads_static_root
 
 logger = logging.getLogger(__name__)
+configure_timing_logging()
 
 settings = get_settings()
 os.environ.setdefault("AGENT_TRACE_DIR", settings.agent_trace_dir)

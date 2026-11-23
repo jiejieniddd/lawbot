@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Iterator
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -57,10 +58,13 @@ def _load_recent_history(db: Session, conversation_id: object, *, limit: int = _
 @router.post("/chat")
 def chat(
     body: ChatRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     request_id: str = Depends(get_request_id),
 ) -> StreamingResponse:
+    received_at = getattr(request.state, "received_at", time.monotonic())
+    timing = logging.getLogger("lawbot.timing")
     conv = db.get(Conversation, body.conversation_id)
     if conv is None or conv.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
@@ -136,6 +140,8 @@ def chat(
         logger.exception("memory store read failed; continuing without store facts")
 
     def event_stream() -> Iterator[str]:
+        first_token = False
+        timing.info("agent_timing request_id=%s stage=request_setup elapsed_ms=%.2f", request_id, (time.monotonic() - received_at) * 1000)
         answer_parts: list[str] = []
         citations: list[dict] = []
         blocked = False
@@ -162,6 +168,9 @@ def chat(
             ):
                 if isinstance(item, ChatEvent):
                     if item.type == "token":
+                        if not first_token and item.data.get("text"):
+                            first_token = True
+                            timing.info("agent_timing request_id=%s stage=first_token elapsed_ms=%.2f", request_id, (time.monotonic() - received_at) * 1000)
                         answer_parts.append(item.data.get("text", ""))
                     elif item.type == "citation":
                         citations.append(item.data)
@@ -176,6 +185,9 @@ def chat(
                 ChatEvent.error(request_id, "generation_failed", "生成失败，请稍后重试")
             )
             return
+
+        finally:
+            timing.info("agent_timing request_id=%s stage=response_generation elapsed_ms=%.2f first_token=%s", request_id, (time.monotonic() - received_at) * 1000, first_token)
 
         if blocked or final_state is None:
             return

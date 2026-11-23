@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import time
+from functools import wraps
 from collections.abc import Iterator
 from typing import Any, Literal, TypedDict
 
@@ -60,11 +61,34 @@ from lawbot.llm.client import (
     StreamTruncatedError,
     complete_text,
     complete_text_stream,
+    get_llm_aux_timeout_seconds,
 )
 from lawbot.rag.base import Retriever
 from lawbot.rag.fake import FakeRetriever
 
 logger = logging.getLogger(__name__)
+
+
+def _timed_stage(stage):
+    def decorate(fn):
+        @wraps(fn)
+        def measured(state, *args, **kwargs):
+            started = time.monotonic()
+            try:
+                return fn(state, *args, **kwargs)
+            finally:
+                logging.getLogger("lawbot.timing").info(
+                    "agent_timing request_id=%s stage=%s elapsed_ms=%.2f",
+                    state.get("request_id") or "-", stage,
+                    (time.monotonic() - started) * 1000,
+                )
+        return measured
+    return decorate
+
+
+def _aux_complete(**kwargs):
+    return complete_text(**kwargs, timeout=get_llm_aux_timeout_seconds(), max_tokens=256)
+
 
 GUARDRAIL_KEYWORDS = ("如何制造炸弹", "洗钱方法", "伪造证件")
 DEFAULT_RETRIEVE_TOP_K = 5
@@ -546,6 +570,7 @@ def _parse_intent_json(text: str) -> Intent | None:
     return None
 
 
+@_timed_stage("intent")
 def classify_intent(
     state: AgentState,
     credentials: ProviderCredentials | None = None,
@@ -560,7 +585,7 @@ def classify_intent(
         intent = _fallback_intent(query)
         source = "fallback"
         try:
-            raw = complete_text(
+            raw = _aux_complete(
                 prompt=build_intent_classify_user_prompt(query=query),
                 credentials=credentials,
                 system=INTENT_CLASSIFY_SYSTEM_PROMPT,
@@ -745,6 +770,7 @@ def _reconcile_case_type(
     return resolved, out_source, guard, reason
 
 
+@_timed_stage("classification")
 def classify_case_type(
     state: AgentState,
     credentials: ProviderCredentials | None = None,
@@ -762,6 +788,10 @@ def classify_case_type(
     llm_reason = ""
     raw_llm_case_type = ""
     ruled = _rule_case_type(query)
+    if ruled is None and not any(_case_type_signal_flags(query)) and _rule_intent(query) in {
+        "interview_qa", "tech_howto", "resume_analysis", "job_match", "job_market", "career_advice"
+    }:
+        ruled = "general"
     if ruled is not None:
         case_type: CaseType = ruled
         source = "rule"
@@ -769,7 +799,7 @@ def classify_case_type(
     else:
         if credentials is not None:
             try:
-                raw = complete_text(
+                raw = _aux_complete(
                     prompt=build_case_type_classify_user_prompt(
                         query=query,
                         prior_case_type=prior_case_type,
@@ -1178,6 +1208,7 @@ def _parse_facts_sufficiency_json(text: str, case_type: str) -> dict[str, Any] |
 
 
 def make_collect(credentials: ProviderCredentials | None = None):
+    @_timed_stage("facts")
     def collect(state: AgentState) -> AgentState:
         t0 = time.monotonic()
         query = state.get("query") or ""
@@ -1263,9 +1294,12 @@ def make_collect(credentials: ProviderCredentials | None = None):
             source = source if reason.startswith("atypical") or reason.startswith("standalone") else "keyword"
             if reason == "keyword_slots":
                 reason = "baseline_sufficient_skip_llm"
-        elif credentials is not None:
+        elif credentials is not None and not (
+            len(query.strip()) < _SHORT_QUERY_FACTS_GUARD
+            and any(n in baseline_missing for n in _CAREER_SLOT_NAMES)
+        ):
             try:
-                raw = complete_text(
+                raw = _aux_complete(
                     prompt=build_facts_sufficiency_user_prompt(
                         query=query,
                         case_type=case_type,
@@ -1408,6 +1442,7 @@ def _parse_rewrite_json(text: str) -> tuple[str, str] | None:
     return None
 
 
+@_timed_stage("rewrite")
 def rewrite_issue(
     state: AgentState,
     credentials: ProviderCredentials | None = None,
@@ -1423,10 +1458,11 @@ def rewrite_issue(
         credentials is not None
         and len(query) > REWRITE_LLM_MIN_LEN
         and not matched
+        and _rule_intent(query) is None
     )
     if use_llm:
         try:
-            raw = complete_text(
+            raw = _aux_complete(
                 prompt=build_rewrite_user_prompt(query=query),
                 credentials=credentials,
                 system=REWRITE_SYSTEM_PROMPT,
@@ -1522,6 +1558,7 @@ def _kb_domains_for_intent(intent: str, *, followup: bool = False) -> list[str]:
 
 
 def make_retrieve(retriever: Retriever, top_k: int = DEFAULT_RETRIEVE_TOP_K):
+    @_timed_stage("retrieval")
     def retrieve(state: AgentState) -> AgentState:
         t0 = time.monotonic()
         # Prefer rewritten search_query / raw query — never collected slot summary.
@@ -1693,6 +1730,7 @@ def _missing_label(state: AgentState) -> str:
     return "、".join(missing)
 
 
+@_timed_stage("prepare_answer")
 def prepare_followup(state: AgentState) -> AgentState:
     query = state.get("query") or ""
     case_type = state.get("case_type") or "general"
@@ -1740,6 +1778,7 @@ def prepare_followup(state: AgentState) -> AgentState:
     }
 
 
+@_timed_stage("prepare_answer")
 def prepare_staged(state: AgentState) -> AgentState:
     names = _missing_label(state)
     dialogue = state.get("dialogue") or _dialogue(state.get("query") or "", state.get("history"))
@@ -1842,6 +1881,7 @@ def _model_report_args(
     return _parse_report_args(raw)
 
 
+@_timed_stage("prepare_answer")
 def prepare_legal_report(
     state: AgentState,
     *,
@@ -2045,6 +2085,7 @@ def prepare_legal_report(
     }
 
 
+@_timed_stage("prepare_answer")
 def prepare_chitchat(state: AgentState) -> AgentState:
     query = (state.get("query") or "").strip()
     mock = _mock_chitchat(query)
@@ -2077,6 +2118,7 @@ def prepare_chitchat(state: AgentState) -> AgentState:
     }
 
 
+@_timed_stage("prepare_answer")
 def prepare_clarify(state: AgentState) -> AgentState:
     query = (state.get("query") or "").strip()
     return {
@@ -2092,6 +2134,7 @@ def prepare_clarify(state: AgentState) -> AgentState:
     }
 
 
+@_timed_stage("prepare_answer")
 def prepare_out_of_scope(state: AgentState) -> AgentState:
     query = (state.get("query") or "").strip()
     return {
@@ -2274,21 +2317,6 @@ def make_answer(credentials: ProviderCredentials | None):
         )
         text = "".join(parts)
         if not text.strip():
-            logger.info("LiteLLM stream empty; fallback complete_text in make_answer")
-            try:
-                text = (
-                    complete_text(
-                        prompt=prompt,
-                        credentials=credentials,
-                        system=ANSWER_SYSTEM_PROMPT,
-                    )
-                    or ""
-                ).strip()
-            except Exception:
-                logger.exception("make_answer complete_text failed")
-                text = ""
-            if text:
-                return {**state, "answer": strip_internal_ids(text), "used_mock": False}
             return {
                 **state,
                 "answer": strip_internal_ids(
@@ -2453,43 +2481,18 @@ def _stream_answer_tokens(
 
     def _fallback_after_empty_stream() -> Iterator[ChatEvent]:
         nonlocal generation_failed
-        cite_n = len(state.get("citations") or [])
-        logger.info(
-            "LiteLLM stream empty/failed; fallback complete_text request_id=%s citations=%s",
-            request_id,
-            cite_n,
+        generation_failed = True
+        logger.info("Answer stream failed; no retry request_id=%s", request_id)
+        fail_text = _soft_fail_answer(
+            query=(state.get("query") or "").strip(), has_citations=False,
         )
-        full_parts.clear()
-        # Keep SSE alive so the C-end idle abort does not fire mid-fallback.
-        yield ChatEvent.status(request_id, "generate", "流式中断，正在改用备用通道…")
-        fallback_body = ""
-        try:
-            fallback_body = (
-                complete_text(prompt=prompt, credentials=credentials, system=system) or ""
-            ).strip()
-        except Exception:
-            logger.exception("Non-stream complete_text also failed")
-            fallback_body = ""
-        if fallback_body:
-            yield from _emit_text(fallback_body, as_mock=False)
-        else:
-            generation_failed = True
-            user_q = (state.get("query") or "").strip()
-            fail_text = _generation_fail_answer(
-                user_query=user_q,
-                mock_text=mock_text,
-            )
-            logger.info(
-                "Generation fallback exhausted; soft-fail request_id=%s query_len=%s",
-                request_id,
-                len(user_q),
-            )
-            yield from _emit_text(fail_text, as_mock=True)
+        yield from _emit_text(fail_text, as_mock=True)
 
     if credentials is None:
         logger.info("LLM answer using paced mock stream (no enabled provider)")
         yield from _emit_text(mock_text, as_mock=True)
     else:
+        generation_started = time.monotonic()
         got_any = False
         truncated: StreamTruncatedError | None = None
         try:
@@ -2504,16 +2507,21 @@ def _stream_answer_tokens(
         except StreamTruncatedError as exc:
             truncated = exc
         except Exception:
-            logger.exception("Stream generation failed; trying non-stream complete_text")
-            got_any = False
-            full_parts.clear()
+            logger.warning("Answer stream interrupted request_id=%s", request_id)
+            truncated = StreamTruncatedError(kind="error", chars_emitted=sum(map(len, full_parts)))
 
+        logging.getLogger("lawbot.timing").info(
+            "agent_timing request_id=%s stage=generation elapsed_ms=%.2f",
+            request_id, (time.monotonic() - generation_started) * 1000,
+        )
         body = "".join(full_parts).strip()
         if truncated is not None:
             if body:
                 note = (
                     _STREAM_LENGTH_FOOTER
                     if truncated.kind == "length"
+                    else "（生成中断，以上内容可能不完整，请稍后重试。）"
+                    if truncated.kind == "error"
                     else _STREAM_TRUNCATED_FOOTER
                 )
                 footer = f"\n\n{note}"
