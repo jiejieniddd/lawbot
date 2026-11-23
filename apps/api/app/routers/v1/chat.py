@@ -68,6 +68,7 @@ def chat(
     conv = db.get(Conversation, body.conversation_id)
     if conv is None or conv.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    user_id = user.id
 
     # Load history before inserting this turn so N includes prior turns only.
     recent_history = _load_recent_history(db, conv.id)
@@ -139,6 +140,11 @@ def chat(
     except Exception:
         logger.exception("memory store read failed; continuing without store facts")
 
+    # A yield dependency keeps this session alive until the SSE response ends.
+    # Release its read transaction before PostgresSaver.setup() creates indexes
+    # concurrently; otherwise the chat request can block its own first event.
+    db.rollback()
+
     def event_stream() -> Iterator[str]:
         first_token = False
         timing.info("agent_timing request_id=%s stage=request_setup elapsed_ms=%.2f", request_id, (time.monotonic() - received_at) * 1000)
@@ -161,7 +167,7 @@ def chat(
                 conversation_id=str(conversation_id),
                 database_url=database_url,
                 province_hint=province_hint,
-                user_id=str(user.id),
+                user_id=str(user_id),
                 store_facts=store_facts,
                 active_resume=active_resume,
                 active_jd=active_jd,
@@ -200,7 +206,7 @@ def chat(
             if domain and domain != "general":
                 upsert_user_preference(
                     session,
-                    user_id=user.id,
+                    user_id=user_id,
                     case_domain=str(domain),
                     province=province or None,
                 )
@@ -208,7 +214,7 @@ def chat(
                 mem_store = get_memory_store(database_url)
                 put_preference_memories(
                     mem_store,
-                    user_id=str(user.id),
+                    user_id=str(user_id),
                     province=province or (final_state.get("province") or None),
                     case_domain=str(domain) if domain else None,
                 )
