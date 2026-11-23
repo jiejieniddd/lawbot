@@ -572,6 +572,11 @@ watch(
           </div>
         </div>
         <p class="disclaimer" :title="disclaimer">{{ disclaimer }}</p>
+        <p class="source-credit">
+          岗位资料含
+          <a href="https://www.onetcenter.org/database.html" target="_blank" rel="noopener noreferrer">O*NET 31.0 Database</a>
+          （美国劳工部，<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>）；中文岗位别名由 CareerBot 添加。
+        </p>
       </div>
     </section>
   </div>
@@ -1402,6 +1407,18 @@ watch(
   overflow: hidden;
   border-top: 2px solid var(--color-ink);
   padding-top: 8px;
+}
+
+.source-credit {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-ink);
+}
+
+.source-credit a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .rail-backdrop {

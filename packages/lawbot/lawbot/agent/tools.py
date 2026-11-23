@@ -150,19 +150,25 @@ def _market_skills_for_role(role: str) -> list[str]:
     mapping = load_role_skill_map()
     if not mapping:
         return []
-    role_l = (role or "").lower()
-    # exact / substring match
-    for key, skills in mapping.items():
-        if key.lower() in role_l or role_l in key.lower():
-            return list(skills)
-    # fallback: first overlapping token
-    for key, skills in mapping.items():
-        if any(tok and tok in role_l for tok in ("算法", "后端", "视觉", "nlp", "slam", "大模型")):
-            if any(tok in key.lower() or tok in key for tok in ("算法", "后端", "视觉", "NLP", "SLAM", "大模型")):
-                return list(skills)
-    # top generic bucket
-    first = next(iter(mapping.values()), [])
-    return list(first)
+    role_l = (role or "").strip().lower()
+    if not role_l:
+        return []
+    exact = next((skills for key, skills in mapping.items() if key.lower() == role_l), None)
+    if exact is not None:
+        return list(exact)
+    matches = [
+        (len(key), skills)
+        for key, skills in mapping.items()
+        if len(key) >= 3 and (key.lower() in role_l or (len(role_l) >= 3 and role_l in key.lower()))
+    ]
+    if matches:
+        return list(max(matches, key=lambda item: item[0])[1])
+    for token in ("算法", "后端", "前端", "全栈", "测试", "安全", "数据", "运维", "移动端", "视觉", "nlp", "slam", "大模型"):
+        if token in role_l:
+            aligned = next((skills for key, skills in mapping.items() if token in key.lower()), None)
+            if aligned is not None:
+                return list(aligned)
+    return []
 
 
 def format_career_report(args: EmitCareerReportArgs) -> str:

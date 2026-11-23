@@ -1,0 +1,21 @@
+{
+  "Java全栈开发": ["Java", "Spring Boot", "Spring Security", "MySQL", "Redis", "REST API", "JavaScript", "TypeScript", "Vue", "React", "Git", "Docker"],
+  "全栈开发": ["JavaScript", "TypeScript", "React", "Vue", "Node.js", "REST API", "SQL", "Git", "Docker", "测试", "部署", "系统设计"],
+  "Java后端开发": ["Java", "Spring Boot", "MySQL", "Redis", "REST API", "Spring Security", "Kafka", "JUnit", "Git", "Docker", "Linux", "系统设计"],
+  "Python后端开发": ["Python", "FastAPI", "Django", "SQL", "PostgreSQL", "Redis", "REST API", "Pytest", "Git", "Docker", "Linux", "异步编程"],
+  "Go后端开发": ["Go", "Gin", "gRPC", "SQL", "Redis", "Kafka", "并发编程", "REST API", "Git", "Docker", "Linux", "系统设计"],
+  "前端开发工程师": ["HTML", "CSS", "JavaScript", "TypeScript", "React", "Vue", "浏览器原理", "HTTP", "状态管理", "前端测试", "Git", "构建工具"],
+  "React前端开发": ["HTML", "CSS", "JavaScript", "TypeScript", "React", "React Hooks", "状态管理", "HTTP", "前端测试", "Git", "Vite", "性能优化"],
+  "Vue前端开发": ["HTML", "CSS", "JavaScript", "TypeScript", "Vue", "Vue Router", "Pinia", "HTTP", "前端测试", "Git", "Vite", "性能优化"],
+  "软件测试工程师": ["测试用例设计", "功能测试", "接口测试", "自动化测试", "Python", "SQL", "Postman", "Selenium", "Pytest", "Git", "CI/CD", "缺陷跟踪"],
+  "自动化测试工程师": ["测试用例设计", "Python", "Pytest", "Selenium", "Playwright", "接口测试", "SQL", "Git", "CI/CD", "性能测试", "缺陷跟踪", "日志分析"],
+  "网络安全工程师": ["网络协议", "Linux", "安全监测", "漏洞管理", "渗透测试基础", "防火墙", "身份认证", "Python", "日志分析", "事件响应", "云安全", "风险评估"],
+  "数据工程师": ["SQL", "Python", "数据建模", "ETL", "数据仓库", "Apache Spark", "Kafka", "Airflow", "PostgreSQL", "云数据平台", "数据质量", "Git"],
+  "大数据开发工程师": ["SQL", "Python", "Java", "Apache Spark", "Hadoop", "Kafka", "Flink", "数据仓库", "ETL", "数据建模", "Linux", "Git"],
+  "移动端开发": ["Android", "iOS", "Kotlin", "Swift", "移动端架构", "REST API", "本地存储", "性能优化", "自动化测试", "Git", "应用发布", "安全"],
+  "Android开发": ["Kotlin", "Java", "Android SDK", "Jetpack Compose", "协程", "Room", "REST API", "性能优化", "单元测试", "Git", "应用发布", "安全"],
+  "iOS开发": ["Swift", "SwiftUI", "UIKit", "Xcode", "并发编程", "Core Data", "REST API", "性能优化", "单元测试", "Git", "应用发布", "安全"],
+  "DevOps工程师": ["Linux", "Git", "Docker", "Kubernetes", "CI/CD", "Terraform", "监控告警", "Python", "Shell", "云平台", "日志分析", "安全"],
+  "SRE": ["Linux", "监控告警", "可观测性", "故障响应", "容量规划", "SLO", "Docker", "Kubernetes", "Python", "Shell", "CI/CD", "云平台"],
+  "数据库管理员": ["SQL", "PostgreSQL", "MySQL", "备份恢复", "索引优化", "高可用", "权限管理", "监控告警", "性能调优", "Linux", "自动化", "数据安全"]
+}

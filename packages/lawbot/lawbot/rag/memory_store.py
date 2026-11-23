@@ -10,9 +10,15 @@ from lawbot.rag.base import RetrievedChunk
 
 
 def _tokenize(text: str) -> list[str]:
-    # Simple CN/EN tokenization for offline BM25 tests
-    parts = re.findall(r"[\u4e00-\u9fff]|[A-Za-z0-9]+", text.lower())
-    return parts
+    # Chinese single characters make unrelated interview questions match almost
+    # every natural-language query. Bigrams keep role and skill phrases together.
+    tokens: list[str] = []
+    for part in re.findall(r"[\u4e00-\u9fff]+|[a-z0-9]+(?:[+#.][a-z0-9+#]*)*", text.lower()):
+        if "\u4e00" <= part[0] <= "\u9fff" and len(part) > 1:
+            tokens.extend(part[i : i + 2] for i in range(len(part) - 1))
+        else:
+            tokens.append(part)
+    return tokens
 
 
 class InMemoryVectorStore:
@@ -49,11 +55,23 @@ class InMemoryVectorStore:
 class InMemoryBM25Store:
     def __init__(self) -> None:
         self._docs: list[tuple[Counter[str], KnowledgeChunk]] = []
+        self._df: Counter[str] = Counter()
 
     def upsert(self, records: list[KnowledgeChunk]) -> int:
         by_id = {r.source_id: r for r in records}
         kept = [(tok, r) for tok, r in self._docs if r.source_id not in by_id]
-        self._docs = kept + [(Counter(_tokenize(r.chunk_text)), r) for r in records]
+        self._docs = kept + [
+            (
+                Counter(
+                    _tokenize(r.chunk_text)
+                    + 3 * _tokenize(r.title)
+                    + 4 * _tokenize(" ".join(r.meta.get("zh_aliases") or []))
+                ),
+                r,
+            )
+            for r in records
+        ]
+        self._df = Counter(token for tokens, _ in self._docs for token in tokens)
         return len(records)
 
     def search(
@@ -71,7 +89,10 @@ class InMemoryBM25Store:
         for toks, rec in self._docs:
             if allowed and rec.domain not in allowed:
                 continue
-            score = sum(min(q[t], toks[t]) for t in q)
+            score = sum(
+                q[t] * min(toks[t], 6) * (1.0 + math.log((len(self._docs) + 1) / (self._df[t] + 1)))
+                for t in q if toks[t]
+            )
             if score > 0:
                 scored.append(RetrievedChunk(citation=rec.to_citation(), score=float(score)))
         scored.sort(key=lambda x: x.score, reverse=True)

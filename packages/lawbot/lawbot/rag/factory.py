@@ -48,6 +48,7 @@ def reset_memory_stores_for_tests() -> None:
     global _MEMORY_LOADED_DIR
     _MEMORY_VECTOR._items.clear()
     _MEMORY_BM25._docs.clear()
+    _MEMORY_BM25._df.clear()
     _MEMORY_LOADED_DIR = None
 
 

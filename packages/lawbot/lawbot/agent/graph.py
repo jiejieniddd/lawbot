@@ -1518,12 +1518,32 @@ _QUERY_TOPIC_KEYS = (
     "机器学习",
     "devops",
     "k8s",
+    "全栈",
+    "测试",
+    "安全",
+    "数据工程",
+    "数据库",
+    "运维",
+    "网络",
+    "移动端",
+    "安卓",
+    "ios",
 )
 
 
 def _query_topic_keys(*texts: str) -> list[str]:
-    blob = " ".join(t for t in texts if t)
-    return [k for k in _QUERY_TOPIC_KEYS if k in blob]
+    blob = " ".join(t for t in texts if t).lower()
+    return [k for k in _QUERY_TOPIC_KEYS if k.lower() in blob]
+
+
+def _is_role_requirements_query(query: str) -> bool:
+    text = (query or "").lower()
+    return any(key in text for key in ("技术栈", "技能要求", "岗位要求", "任职要求", "需要掌握", "应当具备", "需要具备"))
+
+
+def _is_role_research_query(query: str) -> bool:
+    text = (query or "").lower()
+    return any(key in text for key in ("岗位", "职位", "工程师", "全栈", "后端", "前端", "开发", "运维", "架构师"))
 
 
 def _hit_matches_query_topic(hit: dict[str, Any], query: str, *, q_keys: list[str] | None = None) -> bool:
@@ -1568,7 +1588,16 @@ def make_retrieve(retriever: Retriever, top_k: int = DEFAULT_RETRIEVE_TOP_K):
         q_keys = _query_topic_keys(search_q, raw_q)
         intent = str(state.get("intent") or "career_advice")
         followup = _wants_interview_followup(raw_q) or _wants_interview_followup(query)
-        domains = _kb_domains_for_intent(intent, followup=followup)
+        role_requirements = _is_role_requirements_query(raw_q)
+        domains = ["job_skills"] if role_requirements else _kb_domains_for_intent(intent, followup=followup)
+        if intent == "interview_qa" and not followup and _is_role_research_query(raw_q):
+            domains = ["job_skills"] if role_requirements else ["interview_qa", "job_skills"]
+        if role_requirements and q_keys:
+            q_keys = [key for key in q_keys if key not in {"面试", "实习", "校招", "简历", "八股"}]
+        if role_requirements:
+            # Keep the full role phrase so title/alias matches distinguish, for
+            # example, software testing from penetration testing.
+            query = raw_q or query
         ctx = ToolContext(
             retriever=retriever,
             tool_trace=list(state.get("tool_trace") or []),
@@ -1679,11 +1708,11 @@ def make_retrieve(retriever: Retriever, top_k: int = DEFAULT_RETRIEVE_TOP_K):
                 topic_ok = _hit_matches_query_topic(hit, query, q_keys=q_keys)
                 # No domain free-pass: need keyword overlap or high retrieval score.
                 if q_keys:
-                    if topic_ok or score >= high_bar:
+                    if topic_ok and (role_requirements or score >= threshold):
                         filtered.append(hit)
                 elif score >= high_bar or topic_ok:
                     filtered.append(hit)
-            hits = filtered or hits
+            hits = filtered if role_requirements else (filtered or hits)
             top_score = max((float(hit.get("score") or 0.0) for hit in hits), default=0.0)
             usable = bool(hits) and top_score >= threshold
             if intent == "resume_analysis" and resume_analysis.get("has_resume"):

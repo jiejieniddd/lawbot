@@ -75,7 +75,11 @@ def _load_job_skills_from_memory(memory_dir: Path) -> list[tuple[str, list[str]]
             parts = [p.strip() for p in chunk.split("|")]
             if len(parts) >= 2 and parts[1] and parts[1] != "（未标注）":
                 skills = [x.strip() for x in re.split(r"[、,/，]", parts[1]) if x.strip()]
-        rows.append((_normalize_role(title), skills))
+        aliases = (row.get("meta") or {}).get("zh_aliases") or []
+        if row.get("source_name") == "onet_31_0" and isinstance(aliases, list):
+            rows.extend((str(alias).strip(), skills) for alias in aliases if str(alias).strip())
+        else:
+            rows.append((_normalize_role(title), skills))
     return rows
 
 
@@ -159,13 +163,20 @@ def main() -> int:
         for role, counter in sorted(buckets.items(), key=lambda x: (-sum(x[1].values()), x[0]))
         if counter
     }
+    # O*NET's broad occupation skills do not distinguish a Java fullstack role
+    # from iOS or frontend specializations. Explicit CareerBot lists do.
+    overrides_path = ROOT / "data/market/computing_role_skill_overrides.json"
+    if overrides_path.is_file():
+        overrides = json.loads(overrides_path.read_text(encoding="utf-8"))
+        for role, skills in overrides.items():
+            mapping[role] = skills[: args.top_k]
     out = Path(args.out)
     if not out.is_absolute():
         out = ROOT / out
     out.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": 1,
-        "source": "job_skills + optional FairCV sample",
+        "source": "job_skills (including O*NET 31.0) + CareerBot role-specific overrides + optional FairCV sample",
         "faircv_embedded": False,
         "roles": mapping,
     }

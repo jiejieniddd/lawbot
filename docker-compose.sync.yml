@@ -1,0 +1,17 @@
+# Use after the existing api/worker/web images have been built once.
+# Code and prebuilt web assets are mounted from the host, so ordinary source
+# updates do not rerun uv sync or npm install on a small server.
+services:
+  api:
+    volumes:
+      - ./packages/lawbot:/workspace/packages/lawbot:ro
+      - ./apps/api:/workspace/apps/api:ro
+      - ./data/market:/workspace/data/market:ro
+  worker:
+    volumes:
+      - ./packages/lawbot:/workspace/packages/lawbot:ro
+      - ./apps/worker:/workspace/apps/worker:ro
+      - ./data/market:/workspace/data/market:ro
+  web:
+    volumes:
+      - ./apps/web/dist:/usr/share/nginx/html:ro
